@@ -1,0 +1,90 @@
+# ============================================================
+# Secrets & environment
+# ============================================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+credentials/
+
+# ============================================================
+# Docker (keep example files only)
+# ============================================================
+docker/*.yaml
+!docker/*.example.yaml
+
+# ============================================================
+# Data stores (local config & volumes)
+# ============================================================
+# Redis
+redis/**/*.conf
+!redis/**/*.example.conf
+!redis/**/*.conf.example
+redis/dump.rdb
+redis/appendonly.aof
+redis/data/
+redis/logs/
+
+# Postgres (data volume mounted by Docker)
+postgres/
+
+# ============================================================
+# Python
+# ============================================================
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+
+# ============================================================
+# uv / packaging
+# ============================================================
+# Keep uv.lock (commit it), ignore local caches
+.uv-cache/
+
+# ============================================================
+# Editors & OS
+# ============================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ============================================================
+# OpenCode / agent tooling
+# ============================================================
+.opencode/
+.agents/
+
+# ============================================================
+# Logs & misc
+# ============================================================
+*.log
+logs/
+tmp/
+temp/
+.cache/

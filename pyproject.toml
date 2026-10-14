@@ -1,0 +1,27 @@
+[project]
+name = "chat-app"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "aiosmtpd>=1.4.6",
+    "alembic>=1.20.0",
+    "asyncpg>=0.31.0",
+    "fastapi-mail>=1.6.8",
+    "fastapi[standard]>=0.141.1",
+    "itsdangerous>=2.2.0",
+    "pwdlib[argon2]>=0.3.1",
+    "pydantic-settings>=2.15.0",
+    "pyjwt>=2.14.0",
+    "redis>=8.1.0",
+    "sqlalchemy[asyncio]>=2.0.54",
+    "uuid-extension>=0.2.0",
+]
+
+[tool.fastapi]
+entrypoint = "app.main:app"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verify your email</title>
+</head>
+
+<body
+  style="margin:0; padding:0; background-color:#f4f5f7; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+    style="background-color:#f4f5f7; padding:40px 0;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="480" cellpadding="0" cellspacing="0"
+          style="background-color:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+
+          <!-- Header -->
+          <tr>
+            <td style="background-color:#4f46e5; padding:32px 40px; text-align:center;">
+              <h1 style="margin:0; color:#ffffff; font-size:20px; font-weight:600; letter-spacing:-0.3px;">
+                YourApp
+              </h1>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:40px 40px 24px 40px;">
+              <h2 style="margin:0 0 16px 0; color:#1a1a1a; font-size:22px; font-weight:600;">
+                Hi {{ username }}, confirm your email address
+              </h2>
+              <p style="margin:0 0 24px 0; color:#555555; font-size:15px; line-height:1.6;">
+                Thanks for signing up! Please confirm this is your email address by clicking the button below. This link
+                will expire in {{ expiration_minutes | default(30) }} minutes(s).
+              </p>
+
+              <!-- Button -->
+              <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 24px auto;">
+                <tr>
+                  <td align="center" style="border-radius:8px; background-color:#4f46e5;">
+                    <a href="{{ link }}" target="_blank"
+                      style="display:inline-block; padding:14px 32px; color:#ffffff; font-size:15px; font-weight:600; text-decoration:none; border-radius:8px;">
+                      Verify Email Address
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:0 0 8px 0; color:#999999; font-size:13px; line-height:1.5;">
+                Or copy and paste this link into your browser:
+              </p>
+              <p style="margin:0; word-break:break-all;">
+                <a href="{{ link }}" style="color:#4f46e5; font-size:13px; text-decoration:none;">{{ link }}</a>
+              </p>
+            </td>
+          </tr>
+
+          <!-- Divider -->
+          <tr>
+            <td style="padding:0 40px;">
+              <hr style="border:none; border-top:1px solid #eeeeee; margin:0;">
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:24px 40px 32px 40px;">
+              <p style="margin:0; color:#999999; font-size:13px; line-height:1.5;">
+                If you didn't create an account, you can safely ignore this email.
+              </p>
+              <p style="margin:16px 0 0 0; color:#c0c0c0; font-size:12px;">
+                &copy; {{ current_year | default(2026) }} YourApp. All rights reserved.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+
+</html>

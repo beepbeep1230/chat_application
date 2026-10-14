@@ -1,0 +1,19 @@
+# Example Docker Compose file for the PostgreSQL database.
+# Copy this to `docker/postgres.yaml` and fill in real values.
+# The real `postgres.yaml` is git-ignored.
+services:
+  db:
+    image: postgres:18
+    container_name: pg-user
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: your_postgres_password
+      POSTGRES_DB: chatdb
+    ports:
+      - "5555:5432"
+    volumes:
+      - ../postgres:/var/lib/postgresql
+
+volumes:
+  pgdata:

@@ -1,0 +1,29 @@
+## Example Redis configuration.
+## Copy this to `redis/config/redis.conf` and set a real password.
+## The real `redis.conf` is git-ignored.
+
+## Memory settings
+### Limits the maximum memory usage by Redis to 256MB.
+maxmemory 512mb
+### When max memory is reached, evict keys using the "Least Recently Used" (LRU) strategy.
+maxmemory-policy allkeys-lru
+
+maxclients 100
+## Persistence settings
+### Enables Append-Only File (AOF) persistence for durability.
+appendonly yes
+### Specifies the filename for the AOF file.
+appendfilename "appendonly.aof"
+### Replace with a strong, unique password.
+requirepass "change_me_strong_password"
+## Network settings
+### Allows Redis to accept connections from all network interfaces.
+bind 127.0.0.1
+### Sets the port for Redis to listen for incoming connections.
+port 6379
+
+## Logging settings
+### Configures the logging level to "notice" (useful for monitoring significant events).
+loglevel notice
+### Logs are written to the standard output instead of a file (useful for containerized environments).
+logfile ""
