@@ -14,14 +14,13 @@ from app.core.exceptions import (
     UserExists,
     UserNotFound,
 )
+from app.core.logging import logger
 from app.core.security import (
     JWTPayload,
     hash_password,
     verify_jwt_token,
     verify_password,
 )
-
-# from app.modules.users.crud_cache import set_session
 from app.modules.users.models import (
     AccountStatus,
     UserAccount,
@@ -46,8 +45,10 @@ async def check_user_email_verified(db: AsyncSession, email: str):
 
 @translate_db_errors
 async def check_user_existence(db: AsyncSession, email: str, username: str):
-    stmt = select(UserAccount).where(
-        or_(UserAccount.username == username, UserAccount.email == email)
+    stmt = (
+        select(UserAccount)
+        .where(or_(UserAccount.username == username, UserAccount.email == email))
+        .limit(1)
     )
     result = await db.execute(stmt)
 
@@ -78,8 +79,10 @@ async def create_user_account(
 async def authenticate_user_account(
     db: AsyncSession, identifier: str, password: str
 ) -> UserAccount:
-    stmt = select(UserAccount).where(
-        or_(UserAccount.username == identifier, UserAccount.email == identifier)
+    stmt = (
+        select(UserAccount)
+        .where(or_(UserAccount.username == identifier, UserAccount.email == identifier))
+        .limit(1)
     )
     result = await db.execute(stmt)
     user_account = result.scalar_one_or_none()
@@ -183,10 +186,13 @@ async def get_refresh_token(db: AsyncSession, session_id: str) -> UserRefreshTok
 
 
 @translate_db_errors
-async def revoke_all_for_user(db: AsyncSession, user_id: str):
+async def revoke_all_for_user(db: AsyncSession, token: str):
+    payload = verify_jwt_token(jwt_token=token)
+    if payload.type != "refresh":
+        raise InvalidToken()
     stmt = (
         update(UserRefreshToken)
-        .where(UserRefreshToken.user_id == UUID(user_id))
+        .where(UserRefreshToken.user_id == UUID(payload.sub))
         .where(UserRefreshToken.revoked_at.is_(None))
         .values(revoked_at=datetime.now(UTC))
         .returning(UserRefreshToken.sid)

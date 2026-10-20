@@ -8,14 +8,13 @@ from redis.retry import Retry
 from app.core.config import settings
 from redis import ConnectionError, TimeoutError
 
-retry = Retry(ExponentialWithJitterBackoff, 2)
+retry = Retry(ExponentialWithJitterBackoff(), 2)
 
 
 @asynccontextmanager
 async def lifespan_redis(app: FastAPI):
 
     app.state.redis_pool = aioredis.ConnectionPool(
-        # url=f"redis://:{settings.redis_password.get_secret_value()}@{settings.redis_host}:{settings.redis_port}/0",
         password=settings.redis_password.get_secret_value(),
         host=settings.redis_host,
         port=settings.redis_port,

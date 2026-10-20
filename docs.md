@@ -54,3 +54,7 @@ Ondelete = CASCADE ensured the if I delete the parents, children will be deleted
 In async sqlalhcemy, I think as long as lazy loading is not happening, we use the database level cascade.
 
 Exception handing, logging, Redis for blacklisting tokens, tests come next.
+
+~ 2026/10/20
+Adeed Redis, database for failover in authenication. If redis fails during revoking the session, and the record is revoked successfully in database, I may need to set up cron jobs or reconciliation to clean up the session living in redis.
+Also added circuit breaker and logging, but still have tons of uncertain points regarding the Loguru, will come back and learn it later.

@@ -1,6 +1,5 @@
 from datetime import datetime
 from string import punctuation
-from uuid import UUID
 
 from pydantic import (
     BaseModel,

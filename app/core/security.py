@@ -1,12 +1,13 @@
 from time import time
 from typing import Literal
-from uuid import UUID, uuid7
+from uuid import uuid7
 
 import jwt
 from fastapi.security import OAuth2PasswordBearer
 from itsdangerous import URLSafeTimedSerializer
 from itsdangerous.exc import BadSignature, SignatureExpired
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
+from loguru import logger
 from pwdlib import PasswordHash
 from pydantic import BaseModel, ValidationError
 
@@ -32,7 +33,11 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain_password: str, hash_password: str) -> bool:
-    return password_hash.verify(plain_password, hash_password)
+    result = password_hash.verify(plain_password, hash_password)
+    # LOGGING: Log failure only (never log passwords). Identity is logged at router level.
+    if not result:
+        logger.warning("password_verification_failed")
+    return result
 
 
 # Email verification
@@ -47,9 +52,12 @@ def create_url_safe_token(email: str, salt: str) -> str:
 def verify_url_safe_token(token: str, salt: str, max_age_seconds: int) -> str:
     try:
         email = serializer.loads(token, salt=salt, max_age=max_age_seconds)
+    # LOGGING: Security-relevant events - distinguish expired vs forged/bad token
     except SignatureExpired as e:
+        logger.warning("email_token_expired")
         raise ExpiredToken from e
     except BadSignature as e:
+        logger.warning("email_token_invalid_signature")
         raise InvalidToken from e
 
     return email
@@ -65,19 +73,42 @@ def verify_jwt_token(
     secret: str = settings.jwt_secret.get_secret_value(),
     algorithm: str = settings.algorithm,
 ) -> JWTPayload:
+    # LOGGING: Never log the raw token - only the failure reason (+ jti/sid when decodable)
     try:
         decoded_payload = jwt.decode(jwt_token, key=secret, algorithms=[algorithm])
         return JWTPayload(**decoded_payload)
     except ExpiredSignatureError as e:
+        logger.warning("jwt_expired", jti=_safe_claim(jwt_token, "jti"))
         raise ExpiredToken from e
     except InvalidTokenError as e:
+        logger.warning("jwt_invalid", reason=type(e).__name__)
         raise InvalidToken from e
     except ValidationError as e:
+        logger.warning("jwt_payload_invalid", reason=type(e).__name__)
         raise InvalidToken from e
+
+
+def _safe_claim(jwt_token: str, claim: str) -> str | None:
+    """LOGGING helper: read an unverified claim for debugging without validating.
+
+    Used only to enrich logs (e.g. jti of an expired token). Never trust this
+    value for authorization decisions.
+    """
+    try:
+        data = jwt.decode(
+            jwt_token,
+            key="",
+            algorithms=[settings.algorithm],
+            options={"verify_signature": False},
+        )
+        value = data.get(claim)
+        return str(value) if value is not None else None
+    except Exception:
+        return None
 
 
 def create_jwt_token(
-    user_id: UUID, option: Literal["access", "refresh"], session_id: str | None = None
+    user_id: str, option: Literal["access", "refresh"], session_id: str | None = None
 ):
     if option == "access":
         if session_id is None:

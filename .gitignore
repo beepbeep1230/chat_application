@@ -88,3 +88,6 @@ logs/
 tmp/
 temp/
 .cache/
+
+
+*.sql

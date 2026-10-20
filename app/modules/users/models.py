@@ -74,7 +74,7 @@ class UserProfile(Base):
         ForeignKey("user_account.username", ondelete="CASCADE"),
         primary_key=True,
     )
-    display_name: Mapped[str] = mapped_column(String(30), nullable=True)
+    display_name: Mapped[str | None] = mapped_column(String(30), nullable=True)
     bio: Mapped[str | None] = mapped_column(String(200), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # Presence heartbeat (not login state): set on socket connect/disconnect and

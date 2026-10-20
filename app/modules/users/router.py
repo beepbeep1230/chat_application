@@ -18,8 +18,8 @@ from app.api.deps import (
     RefreshTokenCookie,
     UserProfileDependency,
 )
+from app.core.logging import logger  # LOGGING: Import logger
 from app.core.responses import SuccessResponse
-from app.core.security import verify_jwt_token
 from app.modules.users.crud import (
     authenticate_user_account,
     # check_refresh_token,
@@ -32,7 +32,7 @@ from app.modules.users.crud import (
     update_user_account_status,
     update_user_profile,
 )
-from app.modules.users.crud_cache import revoke_session, revoke_session_all
+from app.modules.users.crud_cache import revoke_session_all_cache, revoke_session_cache
 from app.modules.users.email import (  # noqa
     send_verification_mail,
     verify_verification,
@@ -57,7 +57,7 @@ router = APIRouter(prefix="/auth", tags=["authentication"])
 # | POST | `/auth/register` | — | create account + profile, email verification |
 @router.post(
     "/register",
-    response_model=SuccessResponse,
+    response_model=SuccessResponse[dict],
     status_code=status.HTTP_201_CREATED,
 )
 async def register_account(
@@ -75,6 +75,13 @@ async def register_account(
         email=user_data.email,
         password=user_data.password,
     )
+    # LOGGING: Registration success (no password/PII beyond username+email, which
+    # the existing response body already returns). Email task still commented out.
+    logger.info(
+        "user_registered",
+        username=created_user.username,
+        email=created_user.email,
+    )
     # bg_tasks.add_task(
     #     send_verification_mail,
     #     username=created_user.username,
@@ -89,20 +96,30 @@ async def register_account(
 
 
 # | POST | `/auth/login` | — | tokens |
-@router.post("/login", response_model=SuccessResponse, status_code=status.HTTP_200_OK)
+@router.post(
+    "/login",
+    response_model=SuccessResponse[TokenResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def login_account(
     user_form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     redis_client: RedisClient,
     db: DbSession,
     response: Response,
 ) -> SuccessResponse:
+    # LOGGING: Attempt before auth (failure path is logged by unauthorized_handler)
+    identifier = user_form_data.username
+    logger.info("login_attempt", identifier=identifier)
     login_user = await authenticate_user_account(
-        db=db, identifier=user_form_data.username, password=user_form_data.password
+        db=db, identifier=identifier, password=user_form_data.password
     )
     refresh_token, access_token = await issue_session(
         db=db, r=redis_client, user_id=login_user.uuid
     )
     set_refresh_cookie(response, refresh_token)
+
+    # LOGGING: Success with stable identifiers (never log the tokens themselves)
+    logger.info("login_success", user_id=str(login_user.uuid), identifier=identifier)
 
     return SuccessResponse(
         message="Login successfully.",
@@ -113,7 +130,7 @@ async def login_account(
 # | GET | `/auth/verify-email` | — | activate account |
 @router.post(
     "/verify-email",
-    response_model=SuccessResponse,
+    response_model=SuccessResponse[dict],
     status_code=status.HTTP_200_OK,
 )
 async def verify_user_account(
@@ -123,6 +140,12 @@ async def verify_user_account(
     email_from_url_token = verify_verification(url_token=url_token)
     user_by_email = await check_user_email_verified(db=db, email=email_from_url_token)
     updated_user = await update_user_account_status(db=db, user=user_by_email)
+    # LOGGING: Email verified (account activated)
+    logger.info(
+        "email_verified",
+        username=updated_user.username,
+        email=updated_user.email,
+    )
     return SuccessResponse(
         message="Verified.",
         data={
@@ -133,7 +156,11 @@ async def verify_user_account(
 
 
 # | POST | `/auth/refresh` | refresh token | rotate tokens |
-@router.post("/refresh", response_model=SuccessResponse, status_code=status.HTTP_200_OK)
+@router.post(
+    "/refresh",
+    response_model=SuccessResponse[TokenResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def refresh_access_token(
     user_refresh_token: RefreshTokenCookie,
     db: DbSession,
@@ -143,7 +170,15 @@ async def refresh_access_token(
     old_refresh_token_record = await revoke_refresh_token(
         db=db, token=user_refresh_token
     )
-    await revoke_session(r=redis_client, session_id=old_refresh_token_record.sid)
+    # LOGGING: Token rotation - old sid revoked, new one issued by issue_session
+    logger.info(
+        "refresh_token_rotated",
+        user_id=str(old_refresh_token_record.user_id),
+        old_sid=str(old_refresh_token_record.sid),
+    )
+    await revoke_session_cache(
+        r=redis_client, session_id=str(old_refresh_token_record.sid)
+    )
 
     refresh_token, access_token = await issue_session(
         db=db, r=redis_client, user_id=old_refresh_token_record.user_id
@@ -163,8 +198,14 @@ async def logout_user(
     redis_client: RedisClient,
 ) -> SuccessResponse:
     refresh_token_record = await revoke_refresh_token(db=db, token=user_refresh_token)
-    await revoke_session(r=redis_client, session_id=refresh_token_record.sid)
+    await revoke_session_cache(r=redis_client, session_id=str(refresh_token_record.sid))
 
+    # LOGGING: Single-device logout
+    logger.info(
+        "logout_success",
+        user_id=str(refresh_token_record.user_id),
+        sid=str(refresh_token_record.sid),
+    )
     return SuccessResponse(message="Logged out.")
 
 
@@ -176,16 +217,22 @@ async def logout_user_all(
     redis_client: RedisClient,
     db: DbSession,
 ) -> SuccessResponse:
-    refresh_token_payload = verify_jwt_token(jwt_token=user_refresh_token)
-    session_id_list = await revoke_all_for_user(
-        db=db, user_id=refresh_token_payload.sub
+    session_id_list = await revoke_all_for_user(db=db, token=user_refresh_token)
+    await revoke_session_all_cache(r=redis_client, session_id_list=session_id_list)
+    # LOGGING: warning level - "log out everywhere" is security-adjacent
+    logger.warning(
+        "logout_all_devices",
+        sessions_revoked=len(session_id_list),
     )
-    await revoke_session_all(r=redis_client, session_id_list=session_id_list)
     return SuccessResponse(message="Logged out from all devices.")
 
 
 # | GET | `/auth/me` | access | own account + profile |
-@router.get("/me", response_model=SuccessResponse, status_code=status.HTTP_200_OK)
+@router.get(
+    "/me",
+    response_model=SuccessResponse[UserProfileResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def get_profile(
     user_profile: UserProfileDependency,
 ) -> SuccessResponse:
@@ -193,7 +240,11 @@ async def get_profile(
 
 
 # | PATCH | `/auth/me` | access | update display_name/avatar/bio/phone (email change deferred) |
-@router.patch("/me", response_model=SuccessResponse, status_code=status.HTTP_200_OK)
+@router.patch(
+    "/me",
+    response_model=SuccessResponse[UserProfileResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def update_profile(
     user_profile_data: UserUpdateProfileRequest,
     current_user: CurrentUser,
@@ -207,5 +258,5 @@ async def update_profile(
         db=db, user=current_user, user_profile_data=user_profile_dict
     )
 
-    data = UserProfileResponse.model_validate(updated_user_profile)
-    return SuccessResponse(message="Profile updated.", data=data)
+    # data = UserProfileResponse.model_validate(updated_user_profile)
+    return SuccessResponse(message="Profile updated.", data=updated_user_profile)

@@ -15,7 +15,7 @@ password = settings.postgres_password.get_secret_value()
 host = settings.postgres_host
 port = settings.postgres_port
 db_name = settings.db_name
-echo = settings.dev_mode
+echo = False
 
 DB_URL = f"postgresql+asyncpg://{username}:{password}@{host}:{port}/{db_name}"
 
