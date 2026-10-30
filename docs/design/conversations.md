@@ -1,6 +1,6 @@
 # Design — Conversations & Messages
 
-- **Status:** Draft
+- **Status:** Not implemented (planned) — design only
 - **Last updated:** 2026-09-21
 - **Related:** ADR-001 (unified conversations), ADR-002 (soft delete), ADR-003 (derived unread), ADR-004 (cursor pagination)
 

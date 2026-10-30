@@ -26,3 +26,14 @@ The design brief: "the user who got blocked can still send messages, but the blo
 ## References
 
 - `docs/design/relations.md` §5, `docs/prd.md` §5.4
+## Amendment — 2026-10-30 (implementation of the friends module)
+
+- **Status:** Amended (owner decision)
+- What the code does: the friendship rows are **kept** on block (as decided), but they are
+  not "frozen" for both sides. Only the **blocker's** `GET /friends` hides the blocked user;
+  the blocked user still sees the blocker in their list, and either side can unfriend.
+- Friend requests are rejected in **both** directions while a block exists (`403
+  REQUEST_NOT_ALLOWED`), and pending requests between the pair are deleted on block.
+- The owner reviewed this and accepted it as-is. Message dropping and presence hiding remain
+  planned for when messages and realtime exist.
+- See `docs/design/relations.md` §5.

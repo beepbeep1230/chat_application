@@ -1,13 +1,13 @@
 """SQLAlchemy models for the notifications feature.
 
 Import every model defined in this module (directly or indirectly) so Alembic
-autogenerate can discover it through ``app.core.database.Base.metadata``.
+autogenerate can discover it through ``app.core.infra.database.Base.metadata``.
 """
 
 # from sqlalchemy import ForeignKey, String
 # from sqlalchemy.orm import Mapped, mapped_column
 #
-# from app.core.database import Base
+# from app.core.infra.database import Base
 #
 #
 # class Notification(Base):

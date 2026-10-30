@@ -1,6 +1,6 @@
 # Design — Realtime (WebSockets)
 
-- **Status:** Draft
+- **Status:** Not implemented (planned) — design only
 - **Last updated:** 2026-09-21
 - **Related:** `docs/prd.md` §5.9, ADR-004
 

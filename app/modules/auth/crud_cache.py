@@ -2,16 +2,15 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 import redis.asyncio as aioredis
-
-from app.core.circuit_breaker import redis_circuit_breaker
-from app.core.exception_handlers import translate_cache_errors
+from app.core.errors.translators import translate_cache_errors
+from app.core.infra.circuit_breaker import redis_circuit_breaker
 from app.core.logging import logger  # LOGGING: Import logger
-from app.modules.users.models import UserRefreshToken
+from app.modules.auth.models import UserRefreshToken
 
 SESSION_KEY = "auth:session:{sid}"
 
 
-def _session_key(session_id) -> str:
+def _session_key(session_id: str | UUID) -> str:
     return SESSION_KEY.format(sid=session_id)
 
 
@@ -48,7 +47,7 @@ async def revoke_session_cache(r: aioredis.Redis, session_id: str) -> None:
 @redis_circuit_breaker.decorator()
 @translate_cache_errors
 async def revoke_session_all_cache(
-    r: aioredis.Redis, session_id_list: list[UUID]
+        r: aioredis.Redis, session_id_list: list[UUID]
 ) -> None:
     keys = [_session_key(str(session_id)) for session_id in session_id_list]
     if not keys:

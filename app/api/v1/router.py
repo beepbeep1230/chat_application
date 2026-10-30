@@ -6,6 +6,8 @@ Each module owns its own ``prefix`` and ``tags``; this file only wires them in.
 
 from fastapi import APIRouter
 
+from app.modules.auth.router import router as auth_router
+from app.modules.friends.router import router as relation_router
 from app.modules.invites.router import router as invites_router
 from app.modules.messages.router import router as messages_router
 from app.modules.notifications.router import router as notifications_router
@@ -13,7 +15,9 @@ from app.modules.users.router import router as users_router
 
 api_router = APIRouter(prefix="/api/v1")
 
+api_router.include_router(auth_router)
 api_router.include_router(users_router)
+api_router.include_router(relation_router)
 api_router.include_router(messages_router)
 api_router.include_router(notifications_router)
 api_router.include_router(invites_router)

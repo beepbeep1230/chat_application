@@ -1,6 +1,6 @@
 # Design — Notifications
 
-- **Status:** Draft
+- **Status:** Not implemented (planned) — design only
 - **Last updated:** 2026-09-21
 - **Related:** ADR-003 (derived unread), ADR-005 (event-only notification rows)
 

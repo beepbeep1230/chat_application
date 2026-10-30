@@ -1,3 +1,4 @@
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 import redis.asyncio as aioredis
@@ -12,7 +13,7 @@ retry = Retry(ExponentialWithJitterBackoff(), 2)
 
 
 @asynccontextmanager
-async def lifespan_redis(app: FastAPI):
+async def lifespan_redis(app: FastAPI) -> AsyncGenerator[None]:
 
     app.state.redis_pool = aioredis.ConnectionPool(
         password=settings.redis_password.get_secret_value(),

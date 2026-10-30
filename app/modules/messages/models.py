@@ -1,13 +1,13 @@
 """SQLAlchemy models for the messages feature.
 
 Import every model defined in this module (directly or indirectly) so Alembic
-autogenerate can discover it through ``app.core.database.Base.metadata``.
+autogenerate can discover it through ``app.core.infra.database.Base.metadata``.
 """
 
 # from sqlalchemy import ForeignKey, Text
 # from sqlalchemy.orm import Mapped, mapped_column, relationship
 #
-# from app.core.database import Base
+# from app.core.infra.database import Base
 #
 #
 # class Message(Base):

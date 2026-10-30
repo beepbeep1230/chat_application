@@ -35,5 +35,8 @@ class Settings(BaseSettings):
     redis_port: int
     redis_password: SecretStr
 
+    request_cool_down: int
 
-settings = Settings()
+
+# Values are read from .env at runtime; type checkers cannot see that.
+settings = Settings()  # pyright: ignore[reportCallIssue]

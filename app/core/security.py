@@ -3,6 +3,8 @@ from typing import Literal
 from uuid import uuid7
 
 import jwt
+from app.core.config import settings
+from app.core.errors.exceptions import AppError, ExpiredToken, InvalidToken
 from fastapi.security import OAuth2PasswordBearer
 from itsdangerous import URLSafeTimedSerializer
 from itsdangerous.exc import BadSignature, SignatureExpired
@@ -10,9 +12,6 @@ from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 from loguru import logger
 from pwdlib import PasswordHash
 from pydantic import BaseModel, ValidationError
-
-from app.core.config import settings
-from app.core.exceptions import AppError, ExpiredToken, InvalidToken
 
 
 class JWTPayload(BaseModel):
@@ -69,9 +68,9 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 
 def verify_jwt_token(
-    jwt_token: str,
-    secret: str = settings.jwt_secret.get_secret_value(),
-    algorithm: str = settings.algorithm,
+        jwt_token: str,
+        secret: str = settings.jwt_secret.get_secret_value(),
+        algorithm: str = settings.algorithm,
 ) -> JWTPayload:
     # LOGGING: Never log the raw token - only the failure reason (+ jti/sid when decodable)
     try:
@@ -104,22 +103,22 @@ def _safe_claim(jwt_token: str, claim: str) -> str | None:
         value = data.get(claim)
         return str(value) if value is not None else None
     except Exception:
-        return None
+        return
 
 
 def create_jwt_token(
-    user_id: str, option: Literal["access", "refresh"], session_id: str | None = None
-):
+        user_id: str, option: Literal["access", "refresh"], session_id: str | None = None
+) -> tuple[str, JWTPayload]:
     if option == "access":
         if session_id is None:
-            raise AppError("Session ID must be provided for access token.")
+            raise AppError(detail="Session ID must be provided for access token.")
         exp = int(time() + settings.jwt_access_token_life_min * 60)
         sid = session_id
     elif option == "refresh":
         exp = int(time() + settings.jwt_refresh_token_life_day * 3600 * 24)
         sid = str(uuid7())
     else:
-        raise AppError("Invalid token type")
+        raise AppError(detail="Invalid token type")
     iat = int(time())
     jti = uuid7()
 

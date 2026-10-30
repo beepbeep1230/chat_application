@@ -1,12 +1,16 @@
-from fastapi import Request
+from collections.abc import Awaitable, Callable
+
+from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.logging import logger
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        client_ip = request.client.host
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        client_ip = request.client.host if request.client else "unknown"
         method = request.method
         url = request.url.path
 

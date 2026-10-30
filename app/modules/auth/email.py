@@ -10,7 +10,7 @@ from fastapi_mail import (
 from pydantic import EmailStr
 
 from app.core.config import settings
-from app.core.exceptions import ExpiredToken, InvalidToken  # LOGGING: for catch exclude
+from app.core.errors.exceptions import ExpiredToken, InvalidToken  # LOGGING: for catch exclude
 from app.core.logging import logger  # LOGGING: Import logger
 from app.core.security import create_url_safe_token, verify_url_safe_token
 
@@ -34,7 +34,7 @@ conf = ConnectionConfig(
 
 # LOGGING: Catch and log email sending failures
 @logger.catch(reraise=True, message="Failed to send verification email")
-async def send_verification_mail(username: str, email: EmailStr, subject: str):
+async def send_verification_mail(username: str, email: EmailStr, subject: str) -> None:
 
     fastapi_mail = FastMail(config=conf)
     token = create_url_safe_token(
@@ -42,7 +42,8 @@ async def send_verification_mail(username: str, email: EmailStr, subject: str):
     )
     link = f"http://{settings.domain}/api/v1/auth/verify-email?token={token}"
     message = MessageSchema(
-        recipients=[email],
+        # pydantic validates the str into NameEmail at runtime
+        recipients=[email],  # pyright: ignore[reportArgumentType]
         subject=subject,
         template_body={"username": username, "link": link, "expiration_minutes": 15},
         subtype=MessageType.html,
@@ -60,7 +61,7 @@ async def send_verification_mail(username: str, email: EmailStr, subject: str):
     exclude=(ExpiredToken, InvalidToken),
     message="Unexpected failure while verifying email token",
 )
-def verify_verification(url_token: str):
+def verify_verification(url_token: str) -> str:
     decode_email = verify_url_safe_token(
         token=url_token,
         salt=settings.mail_token_salt.get_secret_value(),

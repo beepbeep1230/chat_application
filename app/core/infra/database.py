@@ -1,5 +1,7 @@
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
+from app.core.config import settings
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -7,8 +9,6 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
-
-from app.core.config import settings
 
 username = settings.postgres_username.get_secret_value()
 password = settings.postgres_password.get_secret_value()
@@ -26,6 +26,7 @@ async_engine = create_async_engine(
     max_overflow=10,
     pool_recycle=3600,
     pool_pre_ping=True,
+    hide_parameters=True,
 )
 
 async_session_local = async_sessionmaker(
@@ -34,7 +35,7 @@ async_session_local = async_sessionmaker(
 
 
 @asynccontextmanager
-async def lifespan_database(app: FastAPI):
+async def lifespan_database(app: FastAPI) -> AsyncGenerator[None]:
     yield
     await async_engine.dispose()
 
