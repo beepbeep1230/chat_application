@@ -1,7 +1,7 @@
 # LOGGING: Request ID middleware for correlation across requests
 import uuid
+from collections.abc import Callable
 from contextvars import ContextVar
-from typing import Callable
 
 from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -28,7 +28,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
                 client_ip=client_ip,
             )
             response = await call_next(request)
-            response.headers["X-Request-ID"] = rid
+            response.headers["ChatApp-Request-ID"] = rid
             logger.info(
                 "request_end",
                 status_code=response.status_code,

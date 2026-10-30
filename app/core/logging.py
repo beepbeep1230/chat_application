@@ -57,7 +57,7 @@ def setup_logging(level: str = "INFO") -> None:
         format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {module}:{function}:{line} | {message} | {{extra}}",
         enqueue=True,
         backtrace=True,
-        diagnose=True,
+        diagnose=False,
     )
     logger.add(
         sys.stdout,
@@ -66,7 +66,7 @@ def setup_logging(level: str = "INFO") -> None:
         format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {module}:{function}:{line} | {message} | {{extra}}",
         enqueue=True,
         backtrace=True,
-        diagnose=True,
+        diagnose=False,
     )
     # LOGGING: Tune noisy loggers if needed
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)

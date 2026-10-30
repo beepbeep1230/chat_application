@@ -317,3 +317,25 @@ class InvalidCursor(AppError):
             status=status_code.HTTP_400_BAD_REQUEST,
             type=f"{PROBLEM_TYPE_BASE}/invalid-cursor",
         )
+
+
+# Rate Limit
+class RateLimitExceeded(AppError):
+    def __init__(self, retry_after: int) -> None:
+        super().__init__(
+            code=ErrorCode.RATE_LIMITED,
+            detail="Too Many Requests.",
+            status=status_code.HTTP_429_TOO_MANY_REQUESTS,
+            type=f"{PROBLEM_TYPE_BASE}/rate-limited",
+        )
+        self.retry_after = retry_after
+
+
+class IpMissingError(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            code=ErrorCode.RATE_LIMITED,
+            detail="Too Many Requests.",
+            status=status_code.HTTP_429_TOO_MANY_REQUESTS,
+            type=f"{PROBLEM_TYPE_BASE}/rate-limited",
+        )

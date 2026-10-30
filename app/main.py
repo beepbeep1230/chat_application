@@ -9,14 +9,15 @@ from app.core.errors.handlers import register_exception_handlers
 from app.core.infra.cache import lifespan_redis
 from app.core.infra.database import lifespan_database
 from app.core.infra.lifespan import combine_lifespans
-from app.core.middlewares.logging import LoggingMiddleware
+from app.core.middlewares.rate_limiter import RateLimiterMiddleware
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(lifespan=combine_lifespans(lifespan_database, lifespan_redis))
 
 # LOGGING: Add request ID middleware for correlation
-app.add_middleware(LoggingMiddleware)
+app.add_middleware(RateLimiterMiddleware)
+
 
 app.add_middleware(
     CORSMiddleware,
