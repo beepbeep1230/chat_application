@@ -148,3 +148,8 @@ class TokenBucket:
             remaining,
             reset_in,
         )
+
+    @redis_circuit_breaker.decorator()
+    @translate_cache_errors
+    async def reset(self, redis: aioredis.Redis, key: str):
+        await redis.delete(key)

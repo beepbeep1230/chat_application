@@ -1,9 +1,19 @@
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 
+from app.api.rate_limit import UserRateLimiter
 from app.core.responses import SuccessResponse
 from app.modules.auth.deps import CurrentUser
 from app.modules.users.deps import UserProfileDependency, UserServiceHandler
 from app.modules.users.schemas import UserProfileResponse, UserUpdateProfileRequest
+
+# Read on every app load / tab open: loose.
+profile_read_limit = UserRateLimiter(
+    "profile_read", capacity=30, refill_rate=1, refill_interval=2
+)
+# Profile edits are rare.
+profile_update_limit = UserRateLimiter(
+    "profile_update", capacity=10, refill_rate=1, refill_interval=60
+)
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -13,6 +23,7 @@ router = APIRouter(prefix="/users", tags=["users"])
     "/me",
     response_model=SuccessResponse[UserProfileResponse],
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(profile_read_limit)],
 )
 async def get_profile(
     user_profile: UserProfileDependency,
@@ -25,6 +36,7 @@ async def get_profile(
     "/me",
     response_model=SuccessResponse[UserProfileResponse],
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(profile_update_limit)],
 )
 async def update_profile(
     user_profile_data: UserUpdateProfileRequest,

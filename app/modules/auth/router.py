@@ -2,7 +2,6 @@ from typing import Annotated
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     Query,
     status,
@@ -10,6 +9,7 @@ from fastapi import (
 from fastapi.responses import Response
 from fastapi.security import OAuth2PasswordRequestForm
 
+from app.api.rate_limit import IPRateLimiter, LoginPairRateLimiter
 from app.core.config import settings
 from app.core.responses import SuccessResponse
 from app.modules.auth.deps import AuthServiceHandler, RefreshTokenCookie
@@ -20,6 +20,20 @@ from app.modules.auth.schemas import (
     UserCreateRequest,
     UserVerifiedResponse,
 )
+
+login_ip_limit = IPRateLimiter("login", capacity=30, refill_rate=1, refill_interval=20)
+login_pair_limit = LoginPairRateLimiter(
+    "login", capacity=5, refill_rate=1, refill_interval=180
+)
+register_ip_limit = IPRateLimiter(
+    "register", capacity=5, refill_rate=1, refill_interval=600
+)
+verify_ip_limit = IPRateLimiter(
+    "verify", capacity=10, refill_rate=1, refill_interval=60
+)
+refresh_limit = IPRateLimiter("refresh", capacity=30, refill_rate=1, refill_interval=10)
+
+logout_limit = IPRateLimiter("logout", capacity=10, refill_rate=1, refill_interval=30)
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -38,12 +52,13 @@ def set_refresh_cookie(response: Response, refresh_token: str) -> None:
 # | POST | `/auth/register` | — | create account + profile, email verification |
 @router.post(
     "/register",
+    dependencies=[Depends(register_ip_limit)],
     response_model=SuccessResponse[UserCreatedResponse],
     status_code=status.HTTP_201_CREATED,
 )
 async def register_account(
     user_data: UserCreateRequest,
-    bg_tasks: BackgroundTasks,
+    # bg_tasks: BackgroundTasks,
     service: AuthServiceHandler,
 ) -> SuccessResponse[UserCreatedResponse]:
     created_user = await service.register(
@@ -70,6 +85,7 @@ async def register_account(
 # | POST | `/auth/login` | — | tokens |
 @router.post(
     "/login",
+    dependencies=[Depends(login_ip_limit), Depends(login_pair_limit, scope="function")],
     response_model=SuccessResponse[TokenResponse],
     status_code=status.HTTP_200_OK,
 )
@@ -91,6 +107,7 @@ async def login_account(
 # | GET | `/auth/verify-email` | — | activate account |
 @router.get(
     "/verify-email",
+    dependencies=[Depends(verify_ip_limit)],
     response_model=SuccessResponse[UserVerifiedResponse],
     status_code=status.HTTP_200_OK,
 )
@@ -109,6 +126,7 @@ async def verify_user_account(
 # | POST | `/auth/refresh` | refresh token | rotate tokens |
 @router.post(
     "/refresh",
+    dependencies=[Depends(refresh_limit)],
     response_model=SuccessResponse[TokenResponse],
     status_code=status.HTTP_200_OK,
 )
@@ -126,7 +144,12 @@ async def refresh_access_token(
 
 
 # | POST | `/auth/logout` | refresh token | revoke |
-@router.post("/logout", response_model=SuccessResponse, status_code=status.HTTP_200_OK)
+@router.post(
+    "/logout",
+    dependencies=[Depends(logout_limit)],
+    response_model=SuccessResponse,
+    status_code=status.HTTP_200_OK,
+)
 async def logout_user(
     user_refresh_token: RefreshTokenCookie,
     service: AuthServiceHandler,
@@ -136,7 +159,10 @@ async def logout_user(
 
 
 @router.post(
-    "/logout-all", response_model=SuccessResponse, status_code=status.HTTP_200_OK
+    "/logout-all",
+    dependencies=[Depends(logout_limit)],
+    response_model=SuccessResponse,
+    status_code=status.HTTP_200_OK,
 )
 async def logout_user_all(
     user_refresh_token: RefreshTokenCookie,

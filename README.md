@@ -133,3 +133,32 @@ Key rules:
 
 Fail open for now: Redis down = both layers off, no brute-force/CPU protection until the breaker closes. Accepted risk,
 write it in an ADR (docs/adr/login-rate-limiting.md).
+2026/11/03
+Finished the rate limiter for auth, users and friends. What I decided and learned:
+
+- Login has two layers. IP layer counts every attempt (30, +1 every 20s). Pair layer counts only FAILED logins per
+  (identifier hash, IP) (5, +1 every 180s), so an attacker can't lock out the real user who logs in from another IP.
+- The pair limiter is a yield dependency: take a token before the route, yield, delete the key after. No try/except
+  needed: when login fails the error comes out at the yield, the delete is skipped, and my exception handler still
+  builds the 401.
+- The identifier comes from the same OAuth2PasswordRequestForm the route uses. FastAPI builds a dependency once per
+  request and shares it, so the form is only parsed once. (This is per request only, nothing is cached between requests.)
+- scope="function" on the pair limiter is required, not optional: RedisClient is function-scoped and FastAPI refuses
+  to start if a request-scoped dependency depends on it.
+- Bad form data: the IP limiter still runs and takes a token, then FastAPI returns 422. The pair limiter and the route
+  never run. Junk requests still cost the sender something.
+- The "ratelimit:" prefix lives in one place (RateLimiter._redis_key). I had the delete use "rate-limit:" once and the
+  bucket never reset.
+- Refill one token at a time instead of all at once: stricter for attackers, shorter wait for a real user.
+- Logged-in routes use per-user limits, logged-out routes per IP. Many people share one public IP (Wi-Fi, office,
+  mobile carrier), so IP limits on cheap routes stay loose.
+- One limiter instance per action, not per router. A router-level limiter made refresh and logout eat the login budget.
+- Friends: sending requests is the tight one (about 20/hour). Blocking stays loose, a harassed user must always be able
+  to block. All list GETs share one read budget.
+- Fail open: Redis down = no rate limiting at all. Accepted for now.
+
+Still open:
+- Write the ADR for fail-open login limiting (docs/adr/login-rate-limiting.md).
+- Run uvicorn with --proxy-headers --forwarded-allow-ips when deploying behind a proxy, or everyone shares one IP bucket.
+- Test against real Redis: a failed login creates ratelimit:login:fail:*, a successful one deletes it.
+- Message send and websocket connects still need limits once they exist.

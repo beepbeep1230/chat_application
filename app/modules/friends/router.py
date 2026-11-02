@@ -1,12 +1,37 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Path, Query, status
+from fastapi import APIRouter, Body, Depends, Path, Query, status
 
+from app.api.rate_limit import UserRateLimiter
 from app.core.responses import SuccessResponse
 from app.modules.auth.deps import CurrentUser
 from app.modules.friends import schemas
 from app.modules.friends.deps import FriendServiceHandler
+
+# Spam target: caps how many people one user can request (about 20 an hour).
+friend_request_send_limit = UserRateLimiter(
+    "friend_request_send", capacity=20, refill_rate=1, refill_interval=180
+)
+# Accept / decline / withdraw: only touch requests involving the user, can come in
+# a batch when going through a list.
+friend_request_respond_limit = UserRateLimiter(
+    "friend_request_respond", capacity=30, refill_rate=1, refill_interval=10
+)
+# Unfriend is rare.
+unfriend_limit = UserRateLimiter(
+    "unfriend", capacity=10, refill_rate=1, refill_interval=60
+)
+# Block is protective: never stop a harassed user from blocking.
+block_limit = UserRateLimiter("block", capacity=30, refill_rate=1, refill_interval=10)
+# Unblock is rare; a tight limit also stops block/unblock toggling.
+unblock_limit = UserRateLimiter(
+    "unblock", capacity=10, refill_rate=1, refill_interval=60
+)
+# All list GETs share one budget: scrolling pages and refreshing lists is frequent.
+relations_read_limit = UserRateLimiter(
+    "relations_read", capacity=60, refill_rate=1, refill_interval=1
+)
 
 router = APIRouter(tags=["relations"])
 
@@ -16,6 +41,7 @@ router = APIRouter(tags=["relations"])
     "/friends/requests",
     response_model=SuccessResponse[schemas.FriendRequestResponse],
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(friend_request_send_limit)],
 )
 async def send_friend_request(
     current_user: CurrentUser,
@@ -31,6 +57,7 @@ async def send_friend_request(
     "/friends/requests",
     response_model=SuccessResponse[schemas.FriendRequestList],
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(relations_read_limit)],
 )
 async def incoming_friend_requests(
     current_user: CurrentUser,
@@ -49,6 +76,7 @@ async def incoming_friend_requests(
     "/friends/requests/sent",
     response_model=SuccessResponse[schemas.FriendRequestList],
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(relations_read_limit)],
 )
 async def outgoing_friend_requests(
     current_user: CurrentUser,
@@ -70,6 +98,7 @@ async def outgoing_friend_requests(
     "/friends/requests/{request_id}/accept",
     response_model=SuccessResponse[schemas.FriendRequestResponse],
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(friend_request_respond_limit)],
 )
 async def accept_friend_requests(
     current_user: CurrentUser,
@@ -84,6 +113,7 @@ async def accept_friend_requests(
 @router.post(
     "/friends/requests/{request_id}/decline",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(friend_request_respond_limit)],
 )
 async def decline_friend_requests(
     current_user: CurrentUser,
@@ -97,6 +127,7 @@ async def decline_friend_requests(
 @router.delete(
     "/friends/requests/{request_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(friend_request_respond_limit)],
 )
 async def withdraw_friend_requests(
     current_user: CurrentUser,
@@ -111,6 +142,7 @@ async def withdraw_friend_requests(
     "/friends",
     response_model=SuccessResponse[schemas.UserFriendList],
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(relations_read_limit)],
 )
 async def get_friends_list(
     current_user: CurrentUser,
@@ -126,6 +158,7 @@ async def get_friends_list(
 @router.delete(
     "/friends/{user_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(unfriend_limit)],
 )
 async def delete_friends(
     current_user: CurrentUser,
@@ -140,6 +173,7 @@ async def delete_friends(
     "/blocks/{user_id}",
     response_model=SuccessResponse[schemas.BlockResponse],
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(block_limit)],
 )
 async def block_user(
     current_user: CurrentUser,
@@ -154,6 +188,7 @@ async def block_user(
 @router.delete(
     "/blocks/{user_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(unblock_limit)],
 )
 async def unblock_user(
     current_user: CurrentUser,
@@ -168,6 +203,7 @@ async def unblock_user(
     "/blocks",
     response_model=SuccessResponse[schemas.UserBlockedList],
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(relations_read_limit)],
 )
 async def get_blocked_list(
     current_user: CurrentUser,

@@ -48,7 +48,7 @@ async def revoke_session_cache(r: aioredis.Redis, session_id: str) -> None:
 @redis_circuit_breaker.decorator()
 @translate_cache_errors
 async def revoke_session_all_cache(
-        r: aioredis.Redis, session_id_list: list[UUID]
+    r: aioredis.Redis, session_id_list: list[UUID]
 ) -> None:
     keys = [_session_key(str(session_id)) for session_id in session_id_list]
     if not keys:
