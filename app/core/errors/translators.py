@@ -1,6 +1,10 @@
 from collections.abc import Awaitable, Callable
 from functools import wraps
 
+from loguru import logger  # LOGGING: Import logger
+from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
+
 from app.core.errors.exceptions import (
     AppError,
     CacheConnectionError,
@@ -11,11 +15,8 @@ from app.core.errors.exceptions import (
     DatabaseError,
     UserExists,
 )
-from loguru import logger  # LOGGING: Import logger
 from redis import ConnectionError, DataError, RedisError, ResponseError
 from redis import TimeoutError as RedisTimeoutError
-from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
-from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 # IntegrityError only: the client's request conflicts with the stored data.
 _SQLSTATE_ERRORS: dict[str, type[AppError]] = {
@@ -91,9 +92,7 @@ def translate_db_error(e: Exception) -> AppError:
         sqlstate in _TRANSIENT_SQLSTATES
         or sqlstate.startswith(_TRANSIENT_SQLSTATE_CLASSES)
     ):
-        retry_after = (
-            _RETRY_AFTER_SECONDS if sqlstate in _RETRYABLE_SQLSTATES else None
-        )
+        retry_after = _RETRY_AFTER_SECONDS if sqlstate in _RETRYABLE_SQLSTATES else None
         return DatabaseError(retry_after=retry_after)
     if isinstance(e, (OperationalError, PoolTimeoutError)):
         return DatabaseError()

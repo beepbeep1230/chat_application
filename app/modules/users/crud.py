@@ -1,16 +1,16 @@
-from typing import Any
 from uuid import UUID
+
+from sqlalchemy import Row, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors.translators import translate_db_errors
 from app.modules.users.models import UserAccount, UserProfile
-from sqlalchemy import Row, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 # Profile
 @translate_db_errors
 async def update_user_profile(
-        db: AsyncSession, username: str, user_profile_data: dict[str, str | None]
+    db: AsyncSession, username: str, user_profile_data: dict[str, str | None]
 ) -> UserProfile | None:
     stmt = (
         update(UserProfile)
@@ -23,7 +23,7 @@ async def update_user_profile(
 
 
 @translate_db_errors
-async def select_user_brief(db: AsyncSession, user_id: UUID) -> Row[Any] | None:
+async def select_user_brief(db: AsyncSession, user_id: UUID) -> Row | None:
     stmt = (
         select(
             UserAccount.uuid.label("user_id"),

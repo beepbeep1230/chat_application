@@ -1,5 +1,6 @@
-from app.core.errors.schemas import PROBLEM_TYPE_BASE, ErrorCode
 from fastapi import status as status_code
+
+from app.core.errors.schemas import PROBLEM_TYPE_BASE, ErrorCode
 
 
 class AppError(Exception):
@@ -10,6 +11,7 @@ class AppError(Exception):
         status: int = 500,
         type: str = f"{PROBLEM_TYPE_BASE}/internal-error",
         retry_after: int | None = None,
+        headers_dict: dict[str, str] | None = None,
     ) -> None:
         super().__init__(detail)
         self.code = code
@@ -17,6 +19,7 @@ class AppError(Exception):
         self.status = status
         self.type = type
         self.retry_after = retry_after
+        self.headers_dict = headers_dict
 
 
 class DatabaseError(AppError):
@@ -321,21 +324,23 @@ class InvalidCursor(AppError):
 
 # Rate Limit
 class RateLimitExceeded(AppError):
-    def __init__(self, retry_after: int) -> None:
+    def __init__(self, retry_after: int, headers_dict: dict[str, str]) -> None:
         super().__init__(
             code=ErrorCode.RATE_LIMITED,
             detail="Too Many Requests.",
             status=status_code.HTTP_429_TOO_MANY_REQUESTS,
             type=f"{PROBLEM_TYPE_BASE}/rate-limited",
+            retry_after=retry_after,
+            headers_dict=headers_dict,
         )
-        self.retry_after = retry_after
 
 
-class IpMissingError(AppError):
-    def __init__(self) -> None:
-        super().__init__(
-            code=ErrorCode.RATE_LIMITED,
-            detail="Too Many Requests.",
-            status=status_code.HTTP_429_TOO_MANY_REQUESTS,
-            type=f"{PROBLEM_TYPE_BASE}/rate-limited",
-        )
+# class IPMissingError(AppError):
+#     def __init__(
+#         self,
+#         code: ErrorCode = ErrorCode.BAD_REQUEST,
+#         detail: str = "",
+#         status: int = status_code.HTTP_400_BAD_REQUEST,
+#         type: str = f"{PROBLEM_TYPE_BASE}/missing-ip",
+#     ) -> None:
+#         super().__init__(code, detail, status, type)

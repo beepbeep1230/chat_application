@@ -1,5 +1,10 @@
 from http import HTTPStatus
 
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import Response
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
 from app.core.errors.exceptions import AppError
 from app.core.errors.schemas import (
     PROBLEM_TYPE_BASE,
@@ -8,10 +13,6 @@ from app.core.errors.schemas import (
     Violation,
 )
 from app.core.logging import logger
-from fastapi import FastAPI, Request
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import Response
-from starlette.exceptions import HTTPException as StarletteHTTPException
 
 
 def _map_loc(loc: tuple[int | str, ...]) -> str:
@@ -74,6 +75,9 @@ async def app_error_handler(request: Request, exc: AppError) -> Response:
         headers["WWW-Authenticate"] = "Bearer"
     if exc.retry_after is not None:
         headers["Retry-After"] = str(exc.retry_after)
+
+    if exc.headers_dict:
+        headers.update(exc.headers_dict)
 
     return Response(
         content=body.model_dump_json(indent=2, exclude_none=True),

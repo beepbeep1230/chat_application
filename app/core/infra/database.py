@@ -1,7 +1,6 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from app.core.config import settings
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -9,6 +8,8 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
+
+from app.core.config import settings
 
 username = settings.postgres_username.get_secret_value()
 password = settings.postgres_password.get_secret_value()

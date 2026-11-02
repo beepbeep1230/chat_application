@@ -4,12 +4,14 @@ from collections.abc import AsyncGenerator
 from typing import Annotated
 
 import redis.asyncio as aioredis
-from app.core.errors.translators import translate_db_error
-from app.core.infra.database import async_session_local
 from fastapi import Depends, Request
 from loguru import logger
+from redis.commands.core import AsyncScript
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.errors.translators import translate_db_error
+from app.core.infra.database import async_session_local
 
 
 async def get_db() -> AsyncGenerator[AsyncSession]:
@@ -45,5 +47,11 @@ async def get_redis(request: Request) -> AsyncGenerator[aioredis.Redis]:
         yield redis_client
 
 
+# Registered once in lifespan_redis; app.state is untyped, so type it here.
+async def get_rate_limit_script(request: Request) -> AsyncScript:
+    return request.app.state.token_bucket_script
+
+
 DbSession = Annotated[AsyncSession, Depends(get_db, scope="function")]
 RedisClient = Annotated[aioredis.Redis, Depends(get_redis, scope="function")]
+RateLimitScript = Annotated[AsyncScript, Depends(get_rate_limit_script)]

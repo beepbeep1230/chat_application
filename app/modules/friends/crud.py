@@ -3,13 +3,24 @@ from datetime import datetime
 from typing import Any, cast
 from uuid import UUID
 
-from app.core.errors.translators import translate_db_errors
-from app.modules.friends.models import FriendLists, FriendRequest, UserBlockLists
-from app.modules.users.models import UserAccount, UserProfile
-from sqlalchemy import CursorResult, Row, and_, delete, exists, literal, or_, select, tuple_
+from sqlalchemy import (
+    CursorResult,
+    Row,
+    and_,
+    delete,
+    exists,
+    literal,
+    or_,
+    select,
+    tuple_,
+)
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
+
+from app.core.errors.translators import translate_db_errors
+from app.modules.friends.models import FriendLists, FriendRequest, UserBlockLists
+from app.modules.users.models import UserAccount, UserProfile
 
 
 @translate_db_errors
@@ -21,7 +32,7 @@ async def check_existence_by_id(db: AsyncSession, user_id: UUID) -> bool:
 # FriendRequest
 @translate_db_errors
 async def select_friend_existing_request(
-        db: AsyncSession, user_a: UUID, user_b: UUID
+    db: AsyncSession, user_a: UUID, user_b: UUID
 ) -> FriendRequest | None:
     stmt = select(FriendRequest).where(
         or_(
@@ -41,7 +52,7 @@ async def select_friend_existing_request(
 
 @translate_db_errors
 async def create_friend_request(
-        db: AsyncSession, requester_id: UUID, addressee_id: UUID
+    db: AsyncSession, requester_id: UUID, addressee_id: UUID
 ) -> FriendRequest | None:
     stmt = (
         insert(FriendRequest)
@@ -56,7 +67,7 @@ async def create_friend_request(
 
 @translate_db_errors
 async def delete_claim_friend_request(
-        db: AsyncSession, user_id: UUID, friend_request_id: UUID
+    db: AsyncSession, user_id: UUID, friend_request_id: UUID
 ) -> FriendRequest | None:
     stmt = (
         delete(FriendRequest)
@@ -73,7 +84,7 @@ async def delete_claim_friend_request(
 # Withdraw the request made by ME
 @translate_db_errors
 async def delete_withdraw_friend_request(
-        db: AsyncSession, user_id: UUID, friend_request_id: UUID
+    db: AsyncSession, user_id: UUID, friend_request_id: UUID
 ) -> bool:
     stmt = delete(FriendRequest).where(
         FriendRequest.requester_id == user_id,
@@ -87,14 +98,14 @@ async def delete_withdraw_friend_request(
 
 @translate_db_errors
 async def select_friend_requests(
-        db: AsyncSession,
-        *,
-        me_col: InstrumentedAttribute[UUID],
-        other_col: InstrumentedAttribute[UUID],
-        me: UUID,
-        limit: int,
-        cursor: UUID | None,
-) -> Sequence[Row[Any]]:
+    db: AsyncSession,
+    *,
+    me_col: InstrumentedAttribute[UUID],
+    other_col: InstrumentedAttribute[UUID],
+    me: UUID,
+    limit: int,
+    cursor: UUID | None,
+) -> Sequence[Row]:
     stmt = (
         select(
             FriendRequest.id.label("request_id"),
@@ -121,7 +132,7 @@ async def select_friend_requests(
 # FriendList
 @translate_db_errors
 async def select_check_are_friends(
-        db: AsyncSession, user_id: UUID, friend_id: UUID
+    db: AsyncSession, user_id: UUID, friend_id: UUID
 ) -> bool:
     stmt = select(
         exists().where(
@@ -134,7 +145,7 @@ async def select_check_are_friends(
 
 @translate_db_errors
 async def insert_to_friend_list(
-        db: AsyncSession, user_id: UUID, friend_id: UUID
+    db: AsyncSession, user_id: UUID, friend_id: UUID
 ) -> None:
     record_list = [
         {"user_id": user_id, "friend_id": friend_id},
@@ -146,7 +157,7 @@ async def insert_to_friend_list(
 
 @translate_db_errors
 async def delete_from_friend_list(
-        db: AsyncSession, user_id: UUID, friend_id: UUID
+    db: AsyncSession, user_id: UUID, friend_id: UUID
 ) -> bool:
     stmt = delete(FriendLists).where(
         or_(
@@ -161,11 +172,11 @@ async def delete_from_friend_list(
 
 @translate_db_errors
 async def select_friend_list(
-        db: AsyncSession,
-        user_id: UUID,
-        limit: int,
-        cursor: tuple[datetime, UUID] | None,
-) -> Sequence[Row[Any]]:
+    db: AsyncSession,
+    user_id: UUID,
+    limit: int,
+    cursor: tuple[datetime, UUID] | None,
+) -> Sequence[Row]:
     subq = exists().where(
         UserBlockLists.user_id == user_id,
         UserBlockLists.blocked_user_id == FriendLists.friend_id,
@@ -198,7 +209,7 @@ async def select_friend_list(
 # Block
 @translate_db_errors
 async def select_is_blocked_between(
-        db: AsyncSession, user_a: UUID, user_b: UUID
+    db: AsyncSession, user_a: UUID, user_b: UUID
 ) -> bool:
     stmt = select(
         exists().where(
@@ -219,7 +230,7 @@ async def select_is_blocked_between(
 
 @translate_db_errors
 async def insert_block_record(
-        db: AsyncSession, user_id: UUID, other: UUID
+    db: AsyncSession, user_id: UUID, other: UUID
 ) -> UserBlockLists | None:
     stmt = (
         insert(UserBlockLists)
@@ -232,9 +243,7 @@ async def insert_block_record(
 
 
 @translate_db_errors
-async def delete_requests_between(
-        db: AsyncSession, user_id: UUID, other: UUID
-) -> None:
+async def delete_requests_between(db: AsyncSession, user_id: UUID, other: UUID) -> None:
     stmt = delete(FriendRequest).where(
         or_(
             and_(
@@ -262,11 +271,11 @@ async def delete_unblock(db: AsyncSession, user_id: UUID, other: UUID) -> bool:
 
 @translate_db_errors
 async def select_blocked_list(
-        db: AsyncSession,
-        user_id: UUID,
-        limit: int,
-        cursor: tuple[datetime, UUID] | None,
-) -> Sequence[Row[Any]]:
+    db: AsyncSession,
+    user_id: UUID,
+    limit: int,
+    cursor: tuple[datetime, UUID] | None,
+) -> Sequence[Row]:
     stmt = (
         select(
             UserAccount.uuid.label("user_id"),

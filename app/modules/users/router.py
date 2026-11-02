@@ -1,8 +1,9 @@
+from fastapi import APIRouter, status
+
 from app.core.responses import SuccessResponse
 from app.modules.auth.deps import CurrentUser
 from app.modules.users.deps import UserProfileDependency, UserServiceHandler
 from app.modules.users.schemas import UserProfileResponse, UserUpdateProfileRequest
-from fastapi import APIRouter, status
 
 router = APIRouter(prefix="/users", tags=["users"])
 

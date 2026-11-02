@@ -10,7 +10,10 @@ from fastapi_mail import (
 from pydantic import EmailStr
 
 from app.core.config import settings
-from app.core.errors.exceptions import ExpiredToken, InvalidToken  # LOGGING: for catch exclude
+from app.core.errors.exceptions import (  # LOGGING: for catch exclude
+    ExpiredToken,
+    InvalidToken,
+)
 from app.core.logging import logger  # LOGGING: Import logger
 from app.core.security import create_url_safe_token, verify_url_safe_token
 

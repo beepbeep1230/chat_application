@@ -78,3 +78,58 @@ keep uuid7 for cursor (to sort by time)
 Added "Friends" modules. Worked with AI to separate "Users" and "Auth" modules, and implemented service layer.
 Exception handling was rewritten for the sake of following the RFC9457 standard.
 Next: rewrite the middlewares, logging features and add the rate limiter. Move on to websockets or group features.
+
+2026/11/02
+Rate limiter: token bucket in a Lua script (atomic in Redis), used as a FastAPI dependency (IPRateLimiter / UserRateLimiter).
+Fails open like the rest of Redis (ADR-009): Redis down -> request allowed, no RateLimit-* headers.
+
+Script registration:
+register_script() does NOT talk to Redis, it only hashes the script locally (it needs a client just for the encoder),
+so it is created once in lifespan_redis and stored in app.state. EVALSHA runs on each call; if Redis forgot the script
+(restart), redis-py catches NoScriptError, loads it and retries. No SCRIPT LOAD at startup, otherwise the app can't boot
+without Redis.
+TokenBucket only keeps capacity / refill_rate / refill_interval (built once per limiter), script + client are passed per
+call.
+
+Login rate limiting (plan, I implement it myself):
+What I need to prevent:
+
+- Brute force: many passwords on ONE account -> limit per account.
+- Password spraying: one common password on MANY accounts from one IP -> limit per IP.
+- CPU DoS: every login/register runs argon2 (slow on purpose) -> limit per IP.
+- Username enumeration: probing which accounts exist -> per IP slows it down (doesn't fix the timing leak).
+- Account lockout attack: attacker fails on purpose to lock the victim out -> the danger of an account-only limit.
+- Credential stuffing (leaked pairs, many IPs, 1 try each): rate limiting barely helps, needs MFA / breached-password
+  check / CAPTCHA later.
+
+Design: two layers.
+
+1. IP layer: ratelimit:login:ip:{ip}, counts EVERY attempt (e.g. capacity 20, +1 every 6s). Route dependency, runs
+   before the form is read and before hashing.
+2. Pair layer: ratelimit:login:fail:{id_hash}:{ip}, counts FAILURES only (e.g. capacity 5, +1 every 60s). Lives in
+   AuthService.login because it needs the identifier.
+
+Why a pair (identifier + IP) and not only the account:
+attacker at IP X only empties the (alice, X) bucket, real Alice at IP Y can still log in -> no lockout attack.
+Trade-off: an attacker with many IPs gets ~5 guesses per IP. Later fix if needed: a loose account-only layer
+(e.g. 100 failures/hour).
+
+"Failures only" = consume first, refund on success:
+
+1. allow(pair_key) BEFORE looking up the user / hashing -> EXCEEDED = 429 (a blocked try costs 1 Redis call, not argon2).
+2. wrong password / unknown user / not active -> InvalidCredentials, token stays consumed (= 1 failure).
+3. success -> DEL pair_key (the user proved they know the password).
+   Why not "peek, then count on failure": 50 parallel requests all peek OK before any failure is counted = 50 guesses.
+   Consuming first is atomic in Lua, so parallel requests can't exceed the limit. Also no Lua change needed.
+
+Key rules:
+
+- identifier.strip().lower() first: CITEXT makes Alice == alice, without it every capitalization is a new bucket.
+- sha256(...)[:16] for the key: no emails in plain text in Redis, short fixed-length keys.
+- Count unknown users too, otherwise "never gets 429" tells the attacker the account doesn't exist.
+- Same InvalidCredentials for every failure.
+- On 429 from the pair layer send its headers; on success send only the IP layer headers (don't tell an attacker how
+  many guesses are left for that pair).
+
+Fail open for now: Redis down = both layers off, no brute-force/CPU protection until the breaker closes. Accepted risk,
+write it in an ADR (docs/adr/login-rate-limiting.md).

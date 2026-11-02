@@ -1,5 +1,15 @@
 from typing import Annotated
 
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Query,
+    status,
+)
+from fastapi.responses import Response
+from fastapi.security import OAuth2PasswordRequestForm
+
 from app.core.config import settings
 from app.core.responses import SuccessResponse
 from app.modules.auth.deps import AuthServiceHandler, RefreshTokenCookie
@@ -10,15 +20,6 @@ from app.modules.auth.schemas import (
     UserCreateRequest,
     UserVerifiedResponse,
 )
-from fastapi import (
-    APIRouter,
-    BackgroundTasks,
-    Depends,
-    Query,
-    status,
-)
-from fastapi.responses import Response
-from fastapi.security import OAuth2PasswordRequestForm
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 

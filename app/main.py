@@ -4,19 +4,16 @@ from app.core.logging import setup_logging
 setup_logging(level="INFO")
 
 import uvicorn
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
 from app.api.v1.router import api_router
 from app.core.errors.handlers import register_exception_handlers
 from app.core.infra.cache import lifespan_redis
 from app.core.infra.database import lifespan_database
 from app.core.infra.lifespan import combine_lifespans
-from app.core.middlewares.rate_limiter import RateLimiterMiddleware
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(lifespan=combine_lifespans(lifespan_database, lifespan_redis))
-
-# LOGGING: Add request ID middleware for correlation
-app.add_middleware(RateLimiterMiddleware)
 
 
 app.add_middleware(
@@ -25,6 +22,12 @@ app.add_middleware(
     allow_credentials=True,  # COOKIE
     allow_methods=["GET", "POST", "PATCH", "DELETE"],  # CRUD METHODS
     allow_headers=["Content-type", "Authorization"],
+    expose_headers=[
+        "RateLimit-Limit",
+        "RateLimit-Remaining",
+        "RateLimit-Reset",
+        "Retry-After",
+    ],
 )
 
 app.include_router(api_router)

@@ -3,8 +3,6 @@ from typing import Literal
 from uuid import uuid7
 
 import jwt
-from app.core.config import settings
-from app.core.errors.exceptions import AppError, ExpiredToken, InvalidToken
 from fastapi.security import OAuth2PasswordBearer
 from itsdangerous import URLSafeTimedSerializer
 from itsdangerous.exc import BadSignature, SignatureExpired
@@ -12,6 +10,9 @@ from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 from loguru import logger
 from pwdlib import PasswordHash
 from pydantic import BaseModel, ValidationError
+
+from app.core.config import settings
+from app.core.errors.exceptions import AppError, ExpiredToken, InvalidToken
 
 
 class JWTPayload(BaseModel):

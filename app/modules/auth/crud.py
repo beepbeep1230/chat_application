@@ -2,13 +2,14 @@ from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import UUID
 
+from sqlalchemy import CursorResult, or_, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
+
 from app.core.errors.translators import translate_db_errors
 from app.core.security import JWTPayload
 from app.modules.auth.models import UserRefreshToken
 from app.modules.users.models import AccountStatus, UserAccount, UserProfile
-from sqlalchemy import CursorResult, or_, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
 
 
 # Account

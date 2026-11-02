@@ -1,6 +1,7 @@
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.errors.exceptions import EmptyUpdate, UserNotFound
 from app.modules.users import crud, schemas
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class UserService:

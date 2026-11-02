@@ -7,6 +7,7 @@ from redis.backoff import ExponentialWithJitterBackoff
 from redis.retry import Retry
 
 from app.core.config import settings
+from app.core.infra.token_bucket import TOKEN_BUCKET_SCRIPT
 from redis import ConnectionError, TimeoutError
 
 retry = Retry(ExponentialWithJitterBackoff(), 2)
@@ -27,5 +28,10 @@ async def lifespan_redis(app: FastAPI) -> AsyncGenerator[None]:
         retry=retry,
         retry_on_error=[ConnectionError, TimeoutError],
     )
+    # register_script() only hashes the script locally (no Redis call), so this
+    # is safe while Redis is down. The first EVALSHA loads it on NoScriptError.
+    client = aioredis.Redis(connection_pool=app.state.redis_pool)
+    app.state.token_bucket_script = client.register_script(TOKEN_BUCKET_SCRIPT)
     yield
+
     await app.state.redis_pool.aclose()

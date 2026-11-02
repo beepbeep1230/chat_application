@@ -1,11 +1,12 @@
 from typing import Annotated
 from uuid import UUID
 
+from fastapi import APIRouter, Body, Path, Query, status
+
 from app.core.responses import SuccessResponse
 from app.modules.auth.deps import CurrentUser
 from app.modules.friends import schemas
 from app.modules.friends.deps import FriendServiceHandler
-from fastapi import APIRouter, Body, Path, Query, status
 
 router = APIRouter(tags=["relations"])
 

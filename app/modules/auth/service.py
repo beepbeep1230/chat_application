@@ -1,6 +1,10 @@
 from typing import Literal
 from uuid import UUID
 
+from fastapi.concurrency import run_in_threadpool
+from redis.asyncio import Redis
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config import settings
 from app.core.errors.exceptions import (
     AlreadyVerified,
@@ -20,12 +24,9 @@ from app.core.security import (
     verify_password,
 )
 from app.modules.auth import crud, crud_cache
-from app.modules.auth.models import UserRefreshToken
 from app.modules.auth.email import verify_verification
+from app.modules.auth.models import UserRefreshToken
 from app.modules.users.models import AccountStatus, UserAccount
-from fastapi.concurrency import run_in_threadpool
-from redis.asyncio import Redis
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class AuthService:
