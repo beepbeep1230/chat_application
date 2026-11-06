@@ -1,6 +1,6 @@
 # ADR-005: Event-Only Notification Rows
 
-- **Status:** Accepted
+- **Status:** Accepted. Partly superseded (2026-11-05) by `docs/design/realtime_rewrite.md` §5.5: offline catch-up uses the change log, not the last-read pointer. The rest stays.
 - **Date:** 2026-09-21
 - **Owner:** [you]
 

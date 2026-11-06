@@ -1,8 +1,12 @@
 # Handoff — prompt for the next session
 
+> **Current work (2026-11-07): realtime rewrite design review.** To resume it, use the prompt in
+> `docs/design/realtime_rewrite.md` section 0 and the next-steps list in section 0.1. The
+> sections below are the older session plan (design quiz, rate limiter, logging); the mentor
+> rules in "Who I am and how to work with me" still apply.
+> Uncommitted: `docs/design/realtime_rewrite.md` (untracked) and 4 ADR status edits in `docs/adr/`.
+
 > Paste everything below the line into a new Claude Code session opened in this repo.
-> **Before that, commit the working tree** — nothing after `1a77720` is committed yet, and
-> the refactor, friends module, error handling and these docs only exist on disk.
 
 ---
 

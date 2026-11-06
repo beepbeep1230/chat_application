@@ -1,6 +1,6 @@
 # ADR-009: Redis Session Cache with the Database as Source of Truth
 
-- **Status:** Accepted
+- **Status:** Accepted. Amended (2026-11-05) by `docs/design/realtime_rewrite.md` §5.5: the WebSocket backup session check uses Redis only (no DB fallback). REST is unchanged.
 - **Date:** 2026-10-30 (recorded; decided during the October refactor)
 - **Owner:** [you]
 

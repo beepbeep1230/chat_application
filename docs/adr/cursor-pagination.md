@@ -1,6 +1,6 @@
 # ADR-004: Cursor Pagination, Server Ordering, Client-Generated IDs
 
-- **Status:** Accepted
+- **Status:** Accepted. Partly superseded (2026-11-05) by `docs/design/realtime_rewrite.md` §8: point 3 replaced by server ID + `clientMessageId`; history order moves from `id` to `seq`.
 - **Date:** 2026-09-21
 - **Owner:** [you]
 
