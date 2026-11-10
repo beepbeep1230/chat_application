@@ -1,12 +1,105 @@
 # Handoff — prompt for the next session
 
-> **Current work (2026-11-07): realtime rewrite design review.** To resume it, use the prompt in
-> `docs/design/realtime_rewrite.md` section 0 and the next-steps list in section 0.1. The
-> sections below are the older session plan (design quiz, rate limiter, logging); the mentor
-> rules in "Who I am and how to work with me" still apply.
-> Uncommitted: `docs/design/realtime_rewrite.md` (untracked) and 4 ADR status edits in `docs/adr/`.
+## Current work (updated 2026-11-11): realtime rewrite design review
 
-> Paste everything below the line into a new Claude Code session opened in this repo.
+**Main file:** `docs/design/realtime_rewrite.md`. It is the only source of truth for the review.
+Read it in this order: section 0 (resume prompt), 0.2 (scope map), 0.1 (next steps), then 2, 3,
+5.6 and 9.
+
+**State of the repo**
+
+- Branch `docs/realtime-rewrite-review`. The rounds from 2026-11-09 to 2026-11-11 are **not
+  committed** (`docs/design/realtime_rewrite.md` and this file). Commit only when the owner asks.
+- Design review only: **no app code has been changed**. The mentor rules below still apply. The
+  owner writes all code.
+
+**How the review works**
+
+- One topic per round, one recommended answer per question, and a quick search for common
+  practice (Okta, Auth0, Redis docs, RFCs). Cite what you find.
+- After every round the owner answers, update the plan: the row in section 2 (decided) or 3
+  (proposed), the line in the 0.2 scope map, the step in 0.1, and any text the decision makes
+  stale (strike it through and give the date, don't delete it).
+- The owner likes diagrams for hard choices: ASCII in chat, or an Artifact page with mermaid
+  flowcharts. Earlier diagrams for refresh-reuse options A/B/C:
+  https://claude.ai/artifact/HoP334nWFQqEhJTt2VMJnJ
+- Use a timeline trace ("t0 user sends A → server sets cur=B …") to show any race or failure.
+  The owner understands traces best.
+- Owner preferences (also in auto-memory): just fix typos, don't explain them; design docs and
+  ADRs can change; the small scale (100 / 500 / 30 days) is on purpose, and the owner will write
+  load-test clients to find the real limits.
+
+**Decided in the last rounds (details in the plan)**
+
+| Date | Decision | Where |
+|---|---|---|
+| 2026-11-09 | Fan-out: one Redis channel per user (`user:{id}`), "option U". The owner wants a deeper U vs C explanation from an agent later. | 2, 0.2 E |
+| 2026-11-10 | One active tab per browser ("Use here"), client-side only | 2 |
+| 2026-11-10 | Refresh reuse: grace window (option C), 30 s setting; theft revokes that login only | 2 |
+| 2026-11-10/11 | **Login session model** (three layers): login row in Postgres (30 days absolute, `sid` PK); refresh token in a Redis hash only (7 days = idle timeout); access token JWT 15 min, child of one refresh token (M2: `cur == rti` on every request). The client sends only the refresh token. | 5.6 |
+| 2026-11-11 | Redis is required for auth. Redis down → 503 (fail closed). ADR-009 is replaced. | 5.6, 8 |
+| 2026-11-11 | False theft after a Redis crash (lost rotation) accepted; `appendfsync always` kept as the fallback | 5.6 |
+| 2026-11-11 | After a theft, the login page says "session ended for security reasons"; DPoP (RFC 9449) recorded for later | 5.6 |
+| 2026-11-11 | Rename `UserRefreshToken` → `UserSession`, `UserAccount.refresh_tokens` → `sessions` (owner approved) | 5.6 |
+
+**Waiting on the owner (ask these first)**
+
+1. Confirm the refresh **Lua script** (5.6, proposed). If the token is `cur`, rotate. If it is
+   `prev` and less than 30 s have passed since the rotation, grace: issue a new token and leave
+   `prev` unchanged. Anything else is theft: DEL the key, revoke the login row, publish
+   `session.ended`.
+2. **ADR-009** still has its old status. Ask whether the owner edits it or allows the agent to
+   add one status line ("Superseded by realtime_rewrite.md 5.6").
+3. Small doc fixes from the first round. The owner never answered whether to apply them:
+   section 5.5 unread COUNT filter text; move the accepted section 3 rows (blocking mechanics,
+   `upTo`) to section 2; the "stale text" list at the end of section 9.
+
+**Next topics, in order (section 0.1)**
+
+| Step | Topic |
+|---|---|
+| 3 | 9.9 `Origin` check rule for the v2 mobile app (no `Origin` header) |
+| 4 | 9.11 File uploads: size and type limits with a MinIO signed URL; orphan uploads |
+| 5 | Unconfirmed section 3 rows: skip the backup round when Redis is unreachable; unread on demand (99+); the backup check itself (owner unsure) |
+| 6 | `lock_timeout` value for the `seq` counter lock |
+| 7 | Laptop sizing: workers, pools; `uvicorn --workers` shares one port |
+| 8 | Remaining 🟡 rows in 0.2: Lua script, `session.ended` on logout, ticket flow, close codes, heartbeat, mark-as-read, push payload (full message vs IDs + preview), ... |
+| 9 | F. Membership: which events create system messages; group read receipts; what a kicked member sees |
+| 10 | C. Who deletes change-log rows older than 30 days |
+| 11 | E. Redis down: what else breaks beyond auth, the ticket and the backup check |
+| 12 | G. Laptop infrastructure: firewall, nginx, TLS, internet exposure, process manager, backups |
+| 13 | H. Monitoring: logs, metrics, alerts |
+| 14 | Doc cleanup (stale-text list at the end of section 9; section numbers 5.1–5.4 appear twice, and 5.6 sits before 5.5) |
+
+**Code facts the login model will touch (read only, not verified beyond reading)**
+
+- `app/modules/auth/models.py`: `UserRefreshToken`, table `user_session`. `sid` is
+  `unique=True` (line 25). The comment at lines 39-40 says "revoke all sessions" on theft, which
+  no longer matches.
+- `app/core/security.py`: `create_jwt_token` makes a new `uuid7()` sid on every refresh, with exp
+  = now + `jwt_refresh_token_life_day` (sliding). `JWTPayload` has no `rti` claim yet.
+- `app/modules/auth/service.py`: `refresh` (104-115) revokes, then calls `_issue_session` (new
+  sid). `get_current_user` (135-154) falls back to the DB when the cache misses; this fallback
+  goes away under 5.6.
+- `app/modules/auth/crud_cache.py`: `auth:session:{sid}` hash today holds {user_id, jti}. Under
+  5.6 it becomes {user_id, cur, prev, rotated_at, abs_exp}.
+
+**Paste into the next session**
+
+```
+Read docs/HANDOFF.md ("Current work") and docs/design/realtime_rewrite.md (section 0.2 first,
+then 0.1, 2, 3, 5.6 and 9). We are reviewing the realtime rewrite plan in rounds: one topic at
+a time, one recommended answer per question, search online for common practice, and update the
+plan after every round I answer. Load the skills listed in CLAUDE.md for each topic. Follow the
+mentor rules in CLAUDE.md (no app code changes). Start with the "Waiting on the owner" questions
+in HANDOFF.md, then step 3 in section 0.1.
+```
+
+---
+
+## Older session plan (design quiz, rate limiter, logging), kept for reference
+
+> The mentor rules in "Who I am and how to work with me" still apply to all work.
 
 ---
 
