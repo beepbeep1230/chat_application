@@ -1,6 +1,6 @@
 # ADR-002: Soft-Delete Messages
 
-- **Status:** Accepted
+- **Status:** Accepted. Amended (2026-11-11) by `docs/design/messages.md` §6: "delete for me" is decided (table `message_hidden_for`), and delete for everyone also removes the message's file links. The soft-delete idea stays.
 - **Date:** 2026-09-21
 - **Owner:** [you]
 
@@ -20,4 +20,4 @@ Messages are **soft-deleted**: a `deleted_for_everyone` flag; on delete the `con
 
 ## References
 
-- `docs/design/conversations.md` §5
+- `docs/design/messages.md` §6

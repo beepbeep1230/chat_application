@@ -1,6 +1,6 @@
 # ADR-003: Derived Unread Badges (No Per-Message Read Rows)
 
-- **Status:** Accepted. Superseded (2026-11-05) by `docs/design/realtime_rewrite.md` §5.5: pointer is `last_read_seq`, unread counts messages by `seq`. The derived-count idea stays.
+- **Status:** Accepted. Amended (2026-11-05) by `docs/design/conversations.md` §5: the pointer is `last_read_seq` and unread counts messages by `seq`. The derived-count idea stays.
 - **Date:** 2026-09-21
 - **Owner:** [you]
 

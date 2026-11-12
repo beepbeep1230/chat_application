@@ -14,14 +14,18 @@ request travels through the layers, and the conventions every endpoint follows.
 | Area | Status | Doc |
 |---|---|---|
 | Accounts & authentication (`auth`) | **Implemented** | `accounts_auth.md` |
-| Own profile (`users`) | **Implemented** (`/users/me` only) | `accounts_auth.md` §8 |
+| Own profile (`users`) | **Implemented** (`/users/me` only) | `accounts_auth.md` §11 |
 | Friends & blocks (`friends`) | **Implemented** | `relations.md` |
 | Error handling (RFC 9457) | **Implemented** | `errors.md` |
 | User search / public profile | Planned | — |
-| Conversations, messages, files | Planned (model stubs only) | `conversations.md` |
+| Conversations, membership, read state | Planned (model stubs only) | `conversations.md` |
+| Messages, files | Planned (model stubs only) | `messages.md` |
+| Change log, catch-up | Planned | `change_log.md` |
 | Group invites | Planned (model stub only) | `relations.md` §6 |
 | Notifications | Planned (model stub only) | `notifications.md` |
-| Realtime (WebSocket) | Planned | `realtime.md` |
+| Realtime: socket connection | Planned | `realtime.md` |
+| Realtime: fan-out over Redis | Planned | `fanout.md` |
+| Laptop infrastructure, monitoring | Planned | `infrastructure.md`, `monitoring.md` |
 | Rate limiting | Planned (`ErrorCode.RATE_LIMITED` reserved) | `errors.md` §4 |
 
 ## 2. Directory hierarchy
@@ -135,14 +139,14 @@ Every crud function carries `@translate_db_errors`; every cache function carries
 
 | Method | Path | Auth | Doc |
 |---|---|---|---|
-| POST | `/auth/register` | — | `accounts_auth.md` §7.1 |
-| GET | `/auth/verify-email?token=` | — | §7.2 |
-| POST | `/auth/login` | — | §7.3 |
-| POST | `/auth/refresh` | refresh cookie | §7.4 |
-| POST | `/auth/logout` | refresh cookie | §7.5 |
-| POST | `/auth/logout-all` | refresh cookie | §7.6 |
-| GET | `/users/me` | access | §8.1 |
-| PATCH | `/users/me` | access | §8.2 |
+| POST | `/auth/register` | — | `accounts_auth.md` §10.1 |
+| GET | `/auth/verify-email?token=` | — | §10.2 |
+| POST | `/auth/login` | — | §10.3 |
+| POST | `/auth/refresh` | refresh cookie | §10.4 |
+| POST | `/auth/logout` | refresh cookie | §10.5 |
+| POST | `/auth/logout-all` | refresh cookie | §10.6 |
+| GET | `/users/me` | access | §11.1 |
+| PATCH | `/users/me` | access | §11.2 |
 | POST | `/friends/requests` | access | `relations.md` §7.1 |
 | GET | `/friends/requests` | access | §7.2 |
 | GET | `/friends/requests/sent` | access | §7.2 |
@@ -159,7 +163,8 @@ Every crud function carries `@translate_db_errors`; every cache function carries
 
 `GET /users/search`, `GET /users/{user_id}` — **must be declared after `/users/me`**, or
 `"me"` is parsed as a UUID. Conversations, messages, files, invites, notifications, and
-`WS /ws`: see `conversations.md`, `notifications.md`, `realtime.md`.
+`WS /ws`: see `conversations.md`, `messages.md`, `change_log.md`, `notifications.md`, `realtime.md`.
+The index of all scope docs and the review status is `realtime_rewrite.md`.
 
 ## 7. Infrastructure
 

@@ -1,9 +1,11 @@
 # Design — Relations (Friend Requests, Friendships, Blocks)
 
-- **Status:** Friends & blocks implemented; group invites planned
-- **Last updated:** 2026-10-30
+- **Status:** Friends & blocks implemented; blocking inside conversations (§5.1) and group invites
+  are target design, not built
+- **Last updated:** 2026-11-11
 - **Code:** `app/modules/friends/`
 - **Related:** `docs/prd.md` §5.3–5.4, `errors.md`, ADR-004, ADR-006 (amended), ADR-011
+- **Uses:** `conversations.md` (DMs and groups), `messages.md` (hidden messages), `fanout.md`
 
 ---
 
@@ -20,7 +22,7 @@ The social graph: how two users become friends, stop being friends, and block ea
 | FR-10 list friends, incoming and outgoing requests | ✅ cursor-paginated |
 | FR-11 unfriend deletes the friendship | ✅ |
 | FR-12 block | ✅ |
-| FR-13 messages from a blocked user dropped | planned (needs messages) |
+| FR-13 blocked user may still send; the blocker never sees it | target: §5.1 (saved, hidden from the blocker) |
 | FR-14 friendship kept while blocked | ✅ kept — see §5 and ADR-006 amendment |
 | FR-15 requests from a blocked user rejected | ✅ (`403`, both directions); invites planned |
 | FR-16 list / unblock | ✅ |
@@ -70,7 +72,31 @@ A block is one row `(blocker → blocked)`.
 | Blocked user's `GET /friends` | still shows the blocker (accepted trade-off — ADR-006 amendment) |
 | Unfriend while blocked | allowed |
 | Unblock | the blocked user reappears in the blocker's friend list |
-| Messages, invites, presence | planned with those features |
+| Messages | target design: §5.1 |
+| Invites, presence | planned with those features; blocked users never see each other's presence |
+
+### 5.1 Blocking inside conversations (target design)
+
+| Where | Rule | Why |
+|---|---|---|
+| Groups | **No effect**: the blocker still sees the blocked user's group messages, and they count in the unread badge | Simplest: no `seq` gaps, no filter in push, catch-up, history or workers |
+| DMs | **Silent**: the blocked user can still send; the message is saved and shown to the sender as sent, but never shown to the blocker | Hides the block from the blocked user (no retaliation signal) |
+
+DM mechanics:
+
+- Column `messages.hidden_from_user_id`: NULL normally; the blocker's id when sent while blocked.
+  The message still takes a `seq`.
+- It is published to every member **except** the blocker (the blocker is left out of the member
+  list, `fanout.md` §2), so the blocker's worker never receives it.
+- History, catch-up, preview and unread add `hidden_from_user_id IS DISTINCT FROM :me`.
+- The hole it leaves in the blocker's sequence is why catch-up returns `upTo`
+  (`change_log.md` §6).
+- After unblock, messages sent while blocked stay hidden forever: they were never delivered, and
+  showing them later would reveal the block.
+- The blocker cannot send in that DM (403, unblock first); otherwise the blocked user would get
+  messages from someone who hides theirs.
+- Hidden messages are never shown as read: reading seq 43 moves the blocker's `last_read_seq` past
+  hidden 42, and a "seen" tick there would be false.
 
 ## 6. Group invites (planned)
 
@@ -80,7 +106,7 @@ must be accepted to join, auto-rejected when a block exists. Details: `conversat
 ## 7. Endpoints (`/api/v1`, tag `relations`)
 
 All endpoints need `Authorization: Bearer <accessToken>` and can return the auth errors of
-`accounts_auth.md` §8 and `503 DATABASE_UNAVAILABLE`.
+`accounts_auth.md` §11 and `503 DATABASE_UNAVAILABLE`.
 
 `UserBrief` (used in lists): `{"userId", "username", "displayName", "avatarUrl"}`.
 
@@ -191,6 +217,8 @@ recently blocked first. Errors: `400 VALIDATION_ERROR`, `400 INVALID_CURSOR`.
 
 ## 9. Open questions
 
-- D-1 (PRD): what the direct conversation shows after an unfriend — decide with messages.
+- D-1 (PRD): what the DM shows after an unfriend: asked in `conversations.md` §8.3.
+- Merge `hidden_from_user_id` into `message_hidden_for` (`messages.md` §2)? One filter everywhere
+  instead of two, but it changes a decided mechanic.
 - Rename `SELF_REQUEST` for unfriend/block self-actions? (Stable codes must not be renamed
-  after clients depend on them — decide before release.)
+  after clients depend on them; decide before release.)

@@ -1,6 +1,6 @@
 # ADR-004: Cursor Pagination, Server Ordering, Client-Generated IDs
 
-- **Status:** Accepted. Partly superseded (2026-11-05) by `docs/design/realtime_rewrite.md` §8: point 3 replaced by server ID + `clientMessageId`; history order moves from `id` to `seq`.
+- **Status:** Accepted. Partly superseded (2026-11-05): point 2 (order by `created_at`) and point 3 (client-made IDs) are replaced by the server-given `seq` (`docs/design/change_log.md` §3) and the server ID + `clientMessageId` (`docs/design/messages.md` §3). Point 1 (cursor paging, never `OFFSET`) stays.
 - **Date:** 2026-09-21
 - **Owner:** [you]
 
@@ -22,4 +22,4 @@ Message history is fetched repeatedly (scroll-up, reconnect sync). Three naive c
 
 ## References
 
-- `docs/design/conversations.md` §5, `docs/design/realtime.md` §7
+- `docs/design/messages.md`, `docs/design/change_log.md`

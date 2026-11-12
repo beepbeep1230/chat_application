@@ -1,6 +1,6 @@
 # ADR-009: Redis Session Cache with the Database as Source of Truth
 
-- **Status:** Accepted. Amended (2026-11-05) by `docs/design/realtime_rewrite.md` §5.5: the WebSocket backup session check uses Redis only (no DB fallback). REST is unchanged.
+- **Status:** Superseded (2026-11-11) by `docs/design/accounts_auth.md` §6-§7: the refresh token lives only in Redis (`auth:session:{sid}`), so Redis is required for auth, and REST and the socket fail closed (503) when Redis is down. No DB fallback. The body below describes today's code until that design is built.
 - **Date:** 2026-10-30 (recorded; decided during the October refactor)
 - **Owner:** [you]
 

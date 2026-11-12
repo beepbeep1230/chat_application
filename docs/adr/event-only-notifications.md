@@ -1,6 +1,6 @@
 # ADR-005: Event-Only Notification Rows
 
-- **Status:** Accepted. Partly superseded (2026-11-05) by `docs/design/realtime_rewrite.md` §5.5: offline catch-up uses the change log, not the last-read pointer. The rest stays.
+- **Status:** Accepted. Amended (2026-11-05): offline catch-up uses the change log (`docs/design/change_log.md` §6), not the last-read pointer. The rest stays (`docs/design/notifications.md`).
 - **Date:** 2026-09-21
 - **Owner:** [you]
 
@@ -20,4 +20,4 @@ The `notifications` table holds rows **only for discrete social events**: friend
 
 ## References
 
-- `docs/design/notifications.md`, `docs/design/realtime.md` §6
+- `docs/design/notifications.md`, `docs/design/change_log.md`

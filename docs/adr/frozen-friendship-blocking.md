@@ -1,6 +1,6 @@
 # ADR-006: Full-Ignore Blocking with Frozen Friendships
 
-- **Status:** Accepted
+- **Status:** Accepted, amended twice: 2026-10-30 (see the amendment below) and 2026-11-11: a blocked user's DM messages are saved but hidden from the blocker, not dropped; groups are not affected (`docs/design/relations.md` §5.1).
 - **Date:** 2026-09-21
 - **Owner:** [you]
 

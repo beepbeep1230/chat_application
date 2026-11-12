@@ -1,98 +1,70 @@
 # Handoff — prompt for the next session
 
-## Current work (updated 2026-11-11): realtime rewrite design review
+## Current work (updated 2026-11-12): realtime rewrite design review
 
-**Main file:** `docs/design/realtime_rewrite.md`. It is the only source of truth for the review.
-Read it in this order: section 0 (resume prompt), 0.2 (scope map), 0.1 (next steps), then 2, 3,
-5.6 and 9.
+**Index:** `docs/design/realtime_rewrite.md`: work order (§1), scope map (§2), round history (§4).
+Since 2026-11-11 every scope has its own design doc, and each doc is the source of truth for its
+scope:
+
+| Scope | Doc |
+|---|---|
+| 0 Product | `docs/prd.md` |
+| A Auth and sessions | `docs/design/accounts_auth.md` |
+| B Socket connection | `docs/design/realtime.md` |
+| C Change log, catch-up | `docs/design/change_log.md` |
+| D Messages and files | `docs/design/messages.md` |
+| E Fan-out (Redis) | `docs/design/fanout.md` |
+| F Membership, read state, notifications | `docs/design/conversations.md`, `docs/design/notifications.md` |
+| Blocking | `docs/design/relations.md` §5.1 |
+| G Laptop infrastructure | `docs/design/infrastructure.md` |
+| H Monitoring | `docs/design/monitoring.md` |
 
 **State of the repo**
 
-- Branch `docs/realtime-rewrite-review`. The rounds from 2026-11-09 to 2026-11-11 are **not
-  committed** (`docs/design/realtime_rewrite.md` and this file). Commit only when the owner asks.
-- Design review only: **no app code has been changed**. The mentor rules below still apply. The
-  owner writes all code.
+- Branch `docs/realtime-rewrite-review`. Rounds up to the login session model are committed
+  (`eadc4f6`). Rounds 12-15 (Lua script, single-flight refresh, review findings, message model,
+  `lock_timeout`, the split into scope docs, ADR status lines, PRD sync) are **not committed**.
+  Commit only when the owner asks.
+- Design review only: **no app code has been changed**. The owner writes all code.
 
-**How the review works**
+**How the review works (owner's rules)**
 
-- One topic per round, one recommended answer per question, and a quick search for common
-  practice (Okta, Auth0, Redis docs, RFCs). Cite what you find.
-- After every round the owner answers, update the plan: the row in section 2 (decided) or 3
-  (proposed), the line in the 0.2 scope map, the step in 0.1, and any text the decision makes
-  stale (strike it through and give the date, don't delete it).
-- The owner likes diagrams for hard choices: ASCII in chat, or an Artifact page with mermaid
-  flowcharts. Earlier diagrams for refresh-reuse options A/B/C:
-  https://claude.ai/artifact/HoP334nWFQqEhJTt2VMJnJ
-- Use a timeline trace ("t0 user sends A → server sets cur=B …") to show any race or failure.
-  The owner understands traces best.
-- Owner preferences (also in auto-memory): just fix typos, don't explain them; design docs and
-  ADRs can change; the small scale (100 / 500 / 30 days) is on purpose, and the owner will write
-  load-test clients to find the real limits.
+- **One scope at a time**, in the order of the index §1. Stay on a scope until nothing in it is
+  open; do not jump between scopes. Something found in another scope is written down as ❓ in that
+  scope's doc and asked when that scope comes up.
+- One recommended answer per question, plus a quick search for common practice; cite it.
+- After each answer: update the scope doc (decision + reason; delete replaced text, git keeps the
+  history), the scope's line in index §2, and a row in index §4 at the end of the round.
+- Design docs describe the **target design**; a "Today's code differs" section lists what is not
+  built yet, with `file:line` and whether it was checked. ADRs are history: only their status line
+  changes.
+- Labels: scope areas own 0 and A–H. Name review tables "Table 1/2/3" and options "option 1/2/3".
+- The owner likes timeline traces ("t0 ... t1 ...") for races and failures, and diagrams (ASCII,
+  or an Artifact page with mermaid) for hard choices.
+- Other owner preferences (also in auto-memory): just fix typos; the small scale (100 / 500 /
+  30 days) is on purpose; load-test clients will find the real limits.
 
-**Decided in the last rounds (details in the plan)**
+**Scope page for the owner's phone:** https://claude.ai/artifact/Bt6Xds3EroVcEe6umncSaR (rebuild
+from index §2 and republish after each round).
 
-| Date | Decision | Where |
-|---|---|---|
-| 2026-11-09 | Fan-out: one Redis channel per user (`user:{id}`), "option U". The owner wants a deeper U vs C explanation from an agent later. | 2, 0.2 E |
-| 2026-11-10 | One active tab per browser ("Use here"), client-side only | 2 |
-| 2026-11-10 | Refresh reuse: grace window (option C), 30 s setting; theft revokes that login only | 2 |
-| 2026-11-10/11 | **Login session model** (three layers): login row in Postgres (30 days absolute, `sid` PK); refresh token in a Redis hash only (7 days = idle timeout); access token JWT 15 min, child of one refresh token (M2: `cur == rti` on every request). The client sends only the refresh token. | 5.6 |
-| 2026-11-11 | Redis is required for auth. Redis down → 503 (fail closed). ADR-009 is replaced. | 5.6, 8 |
-| 2026-11-11 | False theft after a Redis crash (lost rotation) accepted; `appendfsync always` kept as the fallback | 5.6 |
-| 2026-11-11 | After a theft, the login page says "session ended for security reasons"; DPoP (RFC 9449) recorded for later | 5.6 |
-| 2026-11-11 | Rename `UserRefreshToken` → `UserSession`, `UserAccount.refresh_tokens` → `sessions` (owner approved) | 5.6 |
+**Scope A is done** (2026-11-12, round 15): fail-closed breaker mode, write order (§7.1, the
+owner may revisit when building), `REFRESH_TOKEN_REUSED`, active-tab election + `session.ended`
+reasons, cookie clearing + `Secure` after HTTPS. Next: ask whether the owner is ready to resume
+scope C; if not, ask whether to start scope D instead.
 
-**Waiting on the owner (ask these first)**
-
-1. Confirm the refresh **Lua script** (5.6, proposed). If the token is `cur`, rotate. If it is
-   `prev` and less than 30 s have passed since the rotation, grace: issue a new token and leave
-   `prev` unchanged. Anything else is theft: DEL the key, revoke the login row, publish
-   `session.ended`.
-2. **ADR-009** still has its old status. Ask whether the owner edits it or allows the agent to
-   add one status line ("Superseded by realtime_rewrite.md 5.6").
-3. Small doc fixes from the first round. The owner never answered whether to apply them:
-   section 5.5 unread COUNT filter text; move the accepted section 3 rows (blocking mechanics,
-   `upTo`) to section 2; the "stale text" list at the end of section 9.
-
-**Next topics, in order (section 0.1)**
-
-| Step | Topic |
-|---|---|
-| 3 | 9.9 `Origin` check rule for the v2 mobile app (no `Origin` header) |
-| 4 | 9.11 File uploads: size and type limits with a MinIO signed URL; orphan uploads |
-| 5 | Unconfirmed section 3 rows: skip the backup round when Redis is unreachable; unread on demand (99+); the backup check itself (owner unsure) |
-| 6 | `lock_timeout` value for the `seq` counter lock |
-| 7 | Laptop sizing: workers, pools; `uvicorn --workers` shares one port |
-| 8 | Remaining 🟡 rows in 0.2: Lua script, `session.ended` on logout, ticket flow, close codes, heartbeat, mark-as-read, push payload (full message vs IDs + preview), ... |
-| 9 | F. Membership: which events create system messages; group read receipts; what a kicked member sees |
-| 10 | C. Who deletes change-log rows older than 30 days |
-| 11 | E. Redis down: what else breaks beyond auth, the ticket and the backup check |
-| 12 | G. Laptop infrastructure: firewall, nginx, TLS, internet exposure, process manager, backups |
-| 13 | H. Monitoring: logs, metrics, alerts |
-| 14 | Doc cleanup (stale-text list at the end of section 9; section numbers 5.1–5.4 appear twice, and 5.6 sits before 5.5) |
-
-**Code facts the login model will touch (read only, not verified beyond reading)**
-
-- `app/modules/auth/models.py`: `UserRefreshToken`, table `user_session`. `sid` is
-  `unique=True` (line 25). The comment at lines 39-40 says "revoke all sessions" on theft, which
-  no longer matches.
-- `app/core/security.py`: `create_jwt_token` makes a new `uuid7()` sid on every refresh, with exp
-  = now + `jwt_refresh_token_life_day` (sliding). `JWTPayload` has no `rti` claim yet.
-- `app/modules/auth/service.py`: `refresh` (104-115) revokes, then calls `_issue_session` (new
-  sid). `get_current_user` (135-154) falls back to the DB when the cache misses; this fallback
-  goes away under 5.6.
-- `app/modules/auth/crud_cache.py`: `auth:session:{sid}` hash today holds {user_id, jti}. Under
-  5.6 it becomes {user_id, cur, prev, rotated_at, abs_exp}.
+**Scope C is paused** (2026-11-11). Decided: timeouts set once on the engine; nightly cron
+cleanup. The owner is studying event logs and catch-up with a self-contained study prompt (given
+in chat, made for the mobile Claude app) before answering `change_log.md` §9 (paging + 410 rule,
+event catalogue, history by `seq`). Resume C when the owner says they are ready.
 
 **Paste into the next session**
 
 ```
-Read docs/HANDOFF.md ("Current work") and docs/design/realtime_rewrite.md (section 0.2 first,
-then 0.1, 2, 3, 5.6 and 9). We are reviewing the realtime rewrite plan in rounds: one topic at
-a time, one recommended answer per question, search online for common practice, and update the
-plan after every round I answer. Load the skills listed in CLAUDE.md for each topic. Follow the
-mentor rules in CLAUDE.md (no app code changes). Start with the "Waiting on the owner" questions
-in HANDOFF.md, then step 3 in section 0.1.
+Read docs/HANDOFF.md ("Current work") and docs/design/realtime_rewrite.md (§1 and §2). We review
+the design one scope at a time, in the order of §1, and stay on a scope until nothing in it is
+open. One recommended answer per question; search online for common practice. After each answer,
+update the scope's design doc and its line in §2. Load the skills listed in CLAUDE.md. Follow the
+mentor rules in CLAUDE.md (no app code changes). Continue with the scope marked "now".
 ```
 
 ---
@@ -132,8 +104,8 @@ crud_cache. Errors are RFC 9457 problem+json with a stable `code`. Read these fi
 ## Environment facts
 
 - Run Python as `.venv/bin/python -I` (`python` is not on PATH).
-- PostgreSQL on `127.0.0.1:5555`, Redis on `127.0.0.1:6379` (Redis was often down; the app
-  still works without it — ADR-009).
+- PostgreSQL on `127.0.0.1:5555`, Redis on `127.0.0.1:6379`. Today's code still works without
+  Redis (old ADR-009); the target design makes Redis required for auth (`accounts_auth.md` §7).
 - Checks: `ruff` (0.17) and `pyright` (1.1.414) are installed in `~/.local/bin`.
   `pyright --pythonpath .venv/bin/python app` must stay at 0 errors. `uvx`/`npx` downloads
   are blocked by the permission system.

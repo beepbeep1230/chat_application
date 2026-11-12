@@ -1,7 +1,7 @@
 # PRD — Chat App
 
 - **Status:** Draft (pending human approval)
-- **Last updated:** 2026-09-21
+- **Last updated:** 2026-11-11 (synced with the scope docs in `docs/design/`)
 - **Owner:** [you]
 - **Authored by:** human designer + agent suggestions
 
@@ -11,7 +11,7 @@
 
 A real-time chat application. Users register, verify their email, find other users, become friends, and chat 1-on-1 or in groups. Messages can be text, emoji, or files, and support replies, reactions, and deletion (editing comes later). Users control their social graph through friend requests, blocks, and group invites. Notifications surface *events* (friend request, invite, reaction, mention); unread counts are **derived** from read receipts rather than stored per message.
 
-This prototype is **API-only**: no frontend, no mobile push. The API must be designed so a web or mobile client can be added later without reshaping the backend.
+This is built as a **real product**, not a demo. v1 is the API plus a web client (the owner builds the frontend); a mobile app follows in v2, so one user can have several devices. It is self-hosted on the owner's laptop.
 
 ## 2. Goals
 
@@ -22,14 +22,21 @@ This prototype is **API-only**: no frontend, no mobile push. The API must be des
   - personal data (phone, email, display name),
   - the social graph (friendships, blocks, invitations).
 
-## 3. Non-goals (explicitly out of scope for the prototype)
+## 3. Product scope (scope 0)
 
-- Frontend / mobile client
-- Message editing (the design leaves room for it)
-- Two-factor authentication
-- Mobile push notifications (APNs / FCM)
-- Full-text search across messages
-- Database schema details, Alembic migrations, deployment (later phase)
+| Item | Decision |
+|---|---|
+| Clients | Web in v1; mobile app in v2 |
+| Scale (small on purpose; load tests will measure the real limits) | Up to 100 members per group, 500 open sockets, change log kept 30 days |
+| Machines | One machine running several worker processes; the design must allow more machines later (`design/infrastructure.md`) |
+| Cost | $0: self-hosted on the owner's laptop (16 GB) |
+| Socket | Only while the tab is open; Web Push later |
+| Later features | Message editing, typing indicators, online status, threads, AI agent bots that users add to a group (the message model already allows them, `design/messages.md` §2) |
+
+**Not in v1:** message editing, typing and presence, Web Push and mobile push, two-factor
+authentication, full-text search across messages, account deletion (C-4, deferred).
+
+Each scope has its own design doc; the index is `design/realtime_rewrite.md`.
 
 ## 4. Key terms
 
@@ -42,8 +49,8 @@ This prototype is **API-only**: no frontend, no mobile push. The API must be des
 | Group conversation | A conversation with 2+ members and roles (owner / admin / member). |
 | Member role | `owner`, `admin`, or `member` inside a group conversation. |
 | Friendship | A row for a pair of users with status `pending` or `accepted`. |
-| Block | A row from blocker → blocked. Freezes the friendship; drops delivery. |
-| Read receipt | Per-member pointer to the last message they have read. |
+| Block | A row from blocker → blocked. Keeps the friendship; DM messages from the blocked user are saved but never shown to the blocker. |
+| Read pointer | Per-member `last_read_seq`: the position in the chat up to which the member has read. |
 
 ## 5. Functional requirements
 
@@ -70,7 +77,7 @@ This prototype is **API-only**: no frontend, no mobile push. The API must be des
 ### 5.4 Blocks
 
 - **FR-12** Block a user (full-ignore semantics, see below).
-- **FR-13** While blocked, the blocked user may still "send", but every message is **silently dropped** and never reaches the blocker.
+- **FR-13** While blocked, the blocked user may still send in the DM; the message is saved and shown to the sender as sent, but **never shown to the blocker**. Groups are not affected (`design/relations.md` §5.1).
 - **FR-14** A friendship with a blocked user is **frozen in place** (row kept) so that unblocking restores it.
 - **FR-15** Friend requests and group invites from a blocked user are automatically rejected.
 - **FR-16** Users can list who they blocked, and unblock.
@@ -91,17 +98,17 @@ This prototype is **API-only**: no frontend, no mobile push. The API must be des
 
 ### 5.6 Messages
 
-- **FR-25** Message types: `text`, `emoji`, `file`, `system`; replies via a parent-message reference.
+- **FR-25** A message is a `user` or `system` message. A user message has text, files, or both (up to 10 files of any mix of types); replies via a parent-message reference (`design/messages.md`).
 - **FR-26** Paginate message history with cursors (never offsets).
-- **FR-27** Soft-delete a message → it becomes a "message deleted" placeholder.
+- **FR-27** The author can delete a message for everyone (it becomes a "message deleted" placeholder; text and files removed). Any member can delete a message for themselves only.
 - **FR-28** Reactions: one emoji per user per message; add and remove.
 - **FR-29** Reply: reference a parent message (threads can come later).
-- **FR-30** Read receipts: each member tracks the last message they read; drives delivered/read state and unread badges.
-- **FR-31** Message ordering by server timestamp; client-generated message IDs dedupe re-sends after drops.
+- **FR-30** Each member has a read pointer (`last_read_seq`); it drives unread badges (capped at 99+). What "seen" shows in groups is open (`design/conversations.md` §8.1).
+- **FR-31** Messages are ordered by a per-conversation sequence number (`seq`) given by the server. The server makes the message ID; the client sends a `clientMessageId` so a retry after a lost reply never saves the message twice.
 
 ### 5.7 Files
 
-- **FR-32** Upload a file → returns file metadata; attach it to a message.
+- **FR-32** Upload a file straight to object storage (MinIO) with a signed URL, up to 25 MB, then attach it to a message.
 - **FR-33** Download requires authentication and membership in the owning conversation.
 
 ### 5.8 Notifications
@@ -112,8 +119,8 @@ This prototype is **API-only**: no frontend, no mobile push. The API must be des
 
 ### 5.9 Realtime
 
-- **FR-37** One authenticated WebSocket endpoint pushes events: new message, message deleted, reaction, read, typing, presence.
-- **FR-38** Reconnect sync: on connect, the client fetches everything after its last-read pointer.
+- **FR-37** One authenticated WebSocket endpoint pushes events: new message, message deleted, reaction, read, membership and notification events. Typing and presence come later.
+- **FR-38** Reconnect sync: the client fetches every change after the last `seq` it has, from the per-conversation change log (`design/change_log.md`).
 
 ## 6. Cross-cutting concerns
 
@@ -121,14 +128,14 @@ This prototype is **API-only**: no frontend, no mobile push. The API must be des
 - **C-2** All timestamps are UTC; ordering uses server time, never client time.
 - **C-3** Rate limiting on message send and social-request endpoints.
 - **C-4** Account deletion must eventually be possible; define what happens to messages (deferred, but keep in mind soft-delete structure).
-- **C-5** Prototype uses permissive CORS (already configured) since there is no frontend yet.
+- **C-5** CORS and the WebSocket `Origin` check allow only the web client's origin (today's code still has permissive CORS).
 
 ## 7. Decision log / open questions
 
 | # | Question | Decision |
 |---|---|---|
-| D-1 | What happens to a direct conversation when users unfriend? | **Proposed:** history stays visible and readable; sending disabled until re-friended. Awaiting user approval. |
-| D-2 | Presence scope in the prototype | Only online/offline + `last_seen_at`. Custom statuses later. |
+| D-1 | What happens to a direct conversation when users unfriend? | **Proposed:** history stays visible and readable; sending disabled until re-friended. Open in `design/conversations.md` §8.3. |
+| D-2 | Presence | Later than v1. When built: online/offline + `last_seen_at`; custom statuses later. |
 
 ---
 

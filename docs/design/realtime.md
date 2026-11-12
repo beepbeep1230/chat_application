@@ -1,102 +1,88 @@
-# Design — Realtime (WebSockets)
+# Design — Socket Connection (scope B)
 
-- **Status:** Not implemented (planned) — design only
-- **Last updated:** 2026-09-21
-- **Related:** `docs/prd.md` §5.9, ADR-004
+- **Status:** Target design, not built. Open items in §8.
+- **Last updated:** 2026-11-11
+- **Uses:** `accounts_auth.md` (the login session a socket belongs to), `fanout.md` (what arrives
+  on the socket), `change_log.md` §7 (resync after a reconnect)
 
 ---
 
-## 1. Purpose
+## 1. Principle
 
-Push events to connected clients in real time, and define what happens when they disconnect and reconnect.
+- Every client write (send, delete, react, mark read) goes through **REST**: durable, retryable.
+- The socket only **pushes from server to client**. One endpoint: `WS /api/v1/ws?ticket=...`.
+- A socket exists only while the tab is open (Web Push later). After a gap, the client resyncs.
+- One socket per login (`sid`), and one active tab per browser (`accounts_auth.md` §8).
 
-## 2. Requirements mapping
+## 2. Why a ticket
 
-FR-37 (one socket, push events), FR-38 (reconnect sync), C-2 (server-time ordering).
+In a browser, `new WebSocket(url)` can set only the URL, not the `Authorization` header.
 
-## 3. Principle: WebSockets push, REST does everything else
+| Way | Risk |
+|---|---|
+| Token in the URL (`/ws?token=`) | URLs are written to proxy and web server logs; anyone reading them can act as the user |
+| Cookie | Sent automatically, so another site can open a socket as the user unless `Origin` is checked |
+| **One-time ticket** (chosen) | A logged ticket is already used |
 
-- **One** socket endpoint: `WS /ws?token=<access_token>`.
-- The socket is **push-only from the server** (plus small acks from the client).
-- Sending messages, pagination, reactions, everything is ordinary HTTP — durable and retryable.
-- The socket authenticates with the same access token as REST; a 401/expired token closes the socket.
-
-## 4. Connection manager
-
-In-process manager (one instance today; documented upgrade path below):
+## 3. Ticket flow (proposed)
 
 ```
-class ConnectionManager:
-    connections: dict[user_id, set[WebSocket]]
-
-    connect(ws, user_id)
-    disconnect(ws, user_id)
-    send_to_user(user_id, event: dict)
-    broadcast_to_conversation(conversation_id, event)   # via member lookup
-    is_online(user_id) -> bool                          # feeds presence
+1. POST /api/v1/realtime/ticket     Authorization: Bearer <access>   (normal auth check)
+   server: ticket = secrets.token_urlsafe(32)
+           SET realtime:ticket:{ticket} {user_id, sid} EX 30
+   reply:  {ticket, expiresIn: 30}
+2. new WebSocket("wss://host/api/v1/ws?ticket=...")
+3. server, before accept: Origin not in the allow-list -> reject the handshake (HTTP 403)
+4. server: GETDEL realtime:ticket:{ticket}   (read + delete in one step; Redis >= 6.2)
+           missing -> accept, then close 4401
+           login no longer active -> close 4401
+5. accept; remember {user_id, sid}; subscribe user:{user_id} (fanout.md)
 ```
 
-- Multiple sockets per user (multiple devices/tabs) — `set[WebSocket]`.
-- On app startup, this lives in `app/ws/`. 
+- Rejecting before accept gives the browser only code 1006 with no reason. Fine for a bad
+  `Origin` (an attacker learns nothing); the real client needs a reason, so ticket problems are
+  close codes after accept.
+- The ticket endpoint is rate-limited like the auth routes.
+- Redis down: no ticket can be checked, so **no new sockets** (fails closed; it cannot fail open,
+  or anyone could connect). Pub/sub is down at the same time anyway.
 
-### Scale-up path (when you leave the prototype)
+## 4. Close codes (proposed)
 
-Move the pub/sub bus to **Redis pub/sub** or **Postgres LISTEN/NOTIFY**; every API worker subscribes and forwards events. The *event envelope format does not change* — only where `send_to_user` publishes.
-
-## 5. Event envelope
-
-Every server → client message is one JSON envelope:
-
-```json
-{
-  "type": "message_new",
-  "conversation_id": "uuid",
-  "payload": { },
-  "server_ts": "2026-09-21T12:00:00Z"
-}
-```
-
-Client → server acks are minimal:
-
-```json
-{ "type": "read", "conversation_id": "uuid", "up_to_message_id": "uuid" }
-```
-
-## 6. Event catalog
-
-| Event | Trigger | Payload includes |
+| Code | Meaning | Client does |
 |---|---|---|
-| `message_new` | message saved | full message body |
-| `message_deleted` | soft delete | message_id, placeholder render flag |
-| `reaction_new` / `reaction_removed` | reaction change | message_id, emoji, user |
-| `read` | recipient acks `up_to_message_id` | conversation_id, user, pointer |
-| `typing` | client sends `typing` | conversation_id, user (no persistence) |
-| `presence` | connect/disconnect | user_id, online, last_seen_at |
-| `membership` | invited/joined/kicked/promoted | conversation_id, user, role-change |
+| 4401 | Ticket missing / used / expired, or login not active | new ticket; if that gets 401 -> refresh; if refresh fails -> login page |
+| 4000 | Login ended (logout, logout-all, theft, ban) | do not reconnect; login page |
+| 1001 / 1006 / 1011 | Server restart, network loss, server error | reconnect with backoff + jitter, then resync |
 
-## 7. Reconnect & ordering (FR-38, ADR-004)
+## 5. Lifetime and the backup check
 
-1. Client connects → sends `{"type":"read", "up_to_message_id": <last seen>}` or fetches `GET /conversations/{id}/messages`.
-2. Server orders everything by its own `created_at` (+ message id tiebreak).
-3. Client-side: if an event is older than the oldest frame the client holds, ignore or refetch — never insert out of order.
-4. **Dedupe:** client-generated message UUIDs make re-sends idempotent (see ADR-004).
+- The socket lives as long as the **login** (`sid`), not the 15-minute access token: tokens rotate
+  under it. It closes when the login ends: `session.ended` arrives on `user:{id}` with the `sid`
+  (`accounts_auth.md` §6), and the worker closes that `sid`'s socket with 4000.
+- **Backup check** (in the plan; the owner is not fully sure yet): every ~60 s each worker checks,
+  in one Redis pipeline, that `auth:session:{sid}` still exists for each open socket. It closes
+  sockets whose `session.ended` push was lost and sockets whose login expired. Redis only, no DB.
+- **Proposed:** when Redis cannot be reached, **skip that round**. Close a socket only when Redis
+  answered and the key is gone. "Cannot ask" is not "logged out"; closing on error would drop
+  every socket at once and cause a reconnect storm.
 
-## 8. Presence
+## 6. Keeping the connection alive (proposed)
 
-- `connect` marks user online + pushes `presence` to relevant others.
-- `disconnect` (heartbeat timeout) marks offline + sets `last_seen_at`.
-- Heartbeat: client pings every ~30s; server drops dead sockets after ~2 missed.
-- Blocked users never see each other's presence (relations.md §5).
+- The server pings every ~25 s: nginx closes a silent proxied connection after 60 s
+  (`proxy_read_timeout` default).
+- No sticky sessions: a plain WebSocket stays on the worker that accepted it. (Socket.IO needs
+  sticky sessions only for its long-polling fallback; this app does not use Socket.IO.)
 
-## 9. Rules & edge cases
+## 7. Database use (proposed)
 
-- Every pushed event must be authorised: the server resolves conversation membership before pushing.
-- Never echo messages to a sender as an *exception* — echo them as confirmation to all their sockets.
-- Socket receives **no** message content for conversations they were kicked from; a `membership` event closes lingering handlers.
-- Rate limit socket connects to prevent reconnect storms.
+The socket handler never holds a database session for the socket's life; it opens one only for
+short lookups. 500 open sockets would otherwise need 500 Postgres connections.
 
-## 10. Future (not today)
+## 8. Open questions
 
-- Typing indicators (already designed; trivial to implement).
-- Ephemeral "is online" list per conversation.
-- Mobile push bridging (FCM/APNs) — build on the same event catalog.
+| # | Question | Notes |
+|---|---|---|
+| 8.1 | `Origin` rule for the v2 mobile app, which sends no `Origin` header | |
+| 8.2 | Slow client: a client that does not read fills the worker's send buffer | Proposal: bounded send queue per socket; when full, close with a 4xxx code; the client resyncs |
+| 8.3 | Backup check itself (§5) | Owner not fully sure |
+| 8.4 | Proposed rows: ticket flow, close codes, skip rule, heartbeat, no DB session | Confirm or change |

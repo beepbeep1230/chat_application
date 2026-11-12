@@ -117,6 +117,9 @@ error is one new class — no handler change.
 | 503 | `CACHE_UNAVAILABLE` | `CacheError` family | Redis failure — in practice absorbed by the circuit breaker (ADR-009) |
 | any | `HTTP_ERROR` | Starlette `HTTPException` with another status | `type` is `about:blank` |
 
+Planned by scope A (`accounts_auth.md` §7, §10.4): a new 401 `REFRESH_TOKEN_REUSED` (refresh-token
+theft), and auth calls fail closed, so `CACHE_UNAVAILABLE` is really returned when Redis is down.
+
 ## 4. Rate limiting (planned)
 
 `ErrorCode.RATE_LIMITED` is reserved and `app_error_handler` already turns
@@ -147,6 +150,7 @@ stays a 500 instead of being reported as "database down".
 `@translate_cache_errors`: connection/timeout → `CacheConnectionError`; response/data error
 → `CacheServerError`; other → `CacheError`. The circuit breaker outside it catches every
 `CacheError` and returns the function's fallback, so callers degrade instead of failing.
+Target design: auth must not degrade; Redis down means 503 (`accounts_auth.md` §7, open item §16.1).
 
 ## 7. Known gaps
 

@@ -1,40 +1,39 @@
-# Design — Conversations & Messages
+# Design — Conversations, Membership and Read State (scope F)
 
-- **Status:** Not implemented (planned) — design only
-- **Last updated:** 2026-09-21
-- **Related:** ADR-001 (unified conversations), ADR-002 (soft delete), ADR-003 (derived unread), ADR-004 (cursor pagination)
-
-This is the heart of the app. It covers conversations (direct + group), membership and roles, messages, reactions, read receipts, and file attachments.
+- **Status:** Target design, not built. Open items in §8.
+- **Last updated:** 2026-11-11
+- **Uses:** `messages.md` (what is sent), `change_log.md` (`seq`, resync), `notifications.md`
+  (the bell), `relations.md` (friends, blocks, invites)
+- **Related ADRs:** ADR-001 (unified conversations), ADR-003 (derived unread)
 
 ---
 
 ## 1. Purpose
 
-One consistent model for every chat — direct and group — plus the full message feature set.
+One model for every chat, direct and group: who is in it, what each member may do, and how far
+each member has read.
 
 ## 2. Requirements mapping
 
-FR-17..FR-24 (conversations/roles), FR-25..FR-31 (messages), FR-32..FR-33 (files).
+FR-17..FR-24 (conversations, roles, mute), FR-30 (read state). Messages and files: `messages.md`.
 
-## 3. Unified conversations (the big decision)
+## 3. Unified conversations
 
-**There is one `conversations` concept; direct and group are just two *types* of it.**
+**There is one `conversations` concept; direct and group are two *types* of it.**
 
 ```
-conversations  id, type: direct|group, title, description, created_at
-conversation_members  conversation_id, user_id, role: owner|admin|member,
-                      joined_at, last_read_message_id, muted (bool / until)
-messages       conversation_id, sender_id, type, content, parent_message_id,
-               deleted_for_everyone, created_at
-message_reactions  message_id, user_id, emoji
-files          id, uploader_id, path, size, mime, created_at   (link from a message)
+conversations         id · type (direct | group) · title · description · last_seq · created_at
+conversation_members  conversation_id · user_id · role (owner | admin | member)
+                      joined_at · last_read_seq · muted (bool / until)
 ```
 
-- A **direct** conversation is just one whose membership is capped at **2** (both default to role `member`).
-- Everything — messages, reactions, read receipts, pagination, mute — is written **once**, for both types. Do not fork the code.
-- `system` messages (member joined/left, renamed, invite accepted) are regular messages with `type = 'system'` and no `sender_id` semantics needed beyond the actor.
+- A **direct** conversation is one whose membership is capped at **2** (both role `member`).
+- A group has at most **100 members**.
+- Everything (messages, reactions, read state, paging, mute) is written **once** for both types.
+  Do not fork the code.
+- `last_seq` is the `seq` counter (`change_log.md` §3).
 
-## 4. Membership & roles (group)
+## 4. Membership and roles (group)
 
 | Role | Can do |
 |---|---|
@@ -42,102 +41,60 @@ files          id, uploader_id, path, size, mime, created_at   (link from a mess
 | `admin` | invite, kick members, edit title/description |
 | `owner` | admin rights + delete group + promote/demote admins |
 
-Creation rules:
-
-- Group creator → `owner`.
-- Promotions/demotions only by `owner`.
+- Group creator → `owner`. Promotions/demotions only by `owner`. Kicking an admin: `owner` only.
 - Direct conversations have no owner; both members are `member`.
+- Membership changes write an event (`change_log.md` §5) and a system message (`messages.md` §2;
+  which events: open there).
 
-### Ownership edge cases (decide at implementation)
+## 5. Read state and unread
 
-| Situation | Proposed rule |
-|---|---|
-| Owner leaves | transfer ownership to the oldest admin, else oldest member, else delete group. |
-| Owner deletes group | conversation + its messages soft-marked deleted; members removed. |
-| Kick an admin | allowed only by `owner`. |
+- Each member stores `last_read_seq` on the membership row.
+- **Unread count** (computed, never stored):
+  `COUNT(messages WHERE seq > last_read_seq AND sender_id <> me AND not deleted AND not hidden for me)`.
+  "Hidden for me" covers delete-for-me (`messages.md` §6) and blocked DMs (`relations.md` §5.1).
+- Not `last_seq - last_read_seq`: deletes and reactions take numbers too.
+- The badge is capped at **99+**.
 
-## 5. Messages
+**Proposed:**
 
-### Types & reply
+- Count on demand with the index `messages (conversation_id, seq)`. A stored counter per member
+  (Discord, WeChat style) is the later option if the chat list gets slow. No extra write per message.
+- Mark as read: `POST /conversations/{id}/read {upToSeq}` sets
+  `last_read_seq = GREATEST(last_read_seq, :seq)`, then publishes `read.updated` on the user's own
+  channel. `GREATEST` stops a slower device moving the pointer backward; the push clears the badge
+  on the user's other devices.
+- Sending a message also moves the sender's own `last_read_seq` to that `seq`, so your own
+  messages never count as unread.
 
-| Field | Meaning |
-|---|---|
-| `type` | `text` \| `emoji` \| `file` \| `system` |
-| `content` | text or emoji payload; for files, the `file_id` reference |
-| `parent_message_id` | reply-to reference (nullable, self-referencing) |
-
-### Ordering & dedupe (ADR-004)
-
-- Server timestamps (`clock_timestamp()`) define order; tie-break by message ID.
-- The client **generates the message UUID** before sending. If the socket drops, the client re-sends the same UUID and the server **dedupes** on the unique ID. No double messages.
-
-### Pagination (ADR-004)
-
-```
-GET /conversations/{id}/messages?cursor=<last_message_id>&limit=50
-  → WHERE conversation_id = ? AND id < cursor ORDER BY id DESC LIMIT 50
-```
-
-- Newest first; scroll up by passing the oldest ID you have as the next cursor.
-- Never `OFFSET` — it degrades and skips rows when new messages arrive.
-
-### Deletion (ADR-002)
-
-- **Soft delete only**, flag `deleted_for_everyone`.
-- On delete, `content` → NULL and a placeholder ("This message was deleted") renders instead.
-- The row survives so read receipts, reactions, replies, and ordering stay intact.
-- "Delete for me only" is a later extension (`deleted_for` per-user), not the prototype.
-
-### Reactions (FR-28)
-
-- One emoji per user per message: `UNIQUE (message_id, user_id)`.
-- Re-reacting with the same emoji is idempotent; an empty reaction removes it.
-
-### Read receipts & unread (FR-30, ADR-003)
-
-- Each member stores `last_read_message_id` on their membership row.
-- `POST /conversations/{id}/read {up_to_message_id}` moves that pointer forward.
-- **Unread count = messages with `id > last_read_message_id`** — computed, never stored.
-- Delivered/read UI: if a message ID is ≤ the recipient's pointer, it's "read".
-
-## 6. Files (FR-32/33)
-
-- `POST /files` multipart upload → metadata row + storage path (local disk; swap to S3/MinIO later via a storage interface).
-- Message with `type='file'` references the `file_id`.
-- `GET /files/{id}` checks **authentication + membership** in the owning conversation before streaming.
-
-## 7. Endpoints
+## 6. Endpoints
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/conversations` | list with preview + unread |
+| GET | `/conversations` | list: `last_seq`, unread (99+), preview, `last_activity_at` |
 | POST | `/conversations` | create direct (friend) or group |
 | GET | `/conversations/{id}` | detail |
 | PATCH | `/conversations/{id}` | title/description (admin/owner) |
 | DELETE | `/conversations/{id}` | delete group (owner) |
-| POST | `/conversations/{id}/invites` | invite (admin/owner) |
+| POST | `/conversations/{id}/invites` | invite (admin/owner; `relations.md` §6) |
 | DELETE | `/conversations/{id}/members/{user_id}` | kick (admin/owner) |
-| POST | `/conversations/{id}/members/{user_id}/admin` | promote (owner) |
-| DELETE | `/conversations/{id}/members/{user_id}/admin` | demote (owner) |
+| POST / DELETE | `/conversations/{id}/members/{user_id}/admin` | promote / demote (owner) |
 | POST | `/conversations/{id}/leave` | leave |
-| POST | `/conversations/{id}/mute` | mute |
-| DELETE | `/conversations/{id}/mute` | unmute |
-| GET | `/conversations/{id}/messages` | paginated history |
-| POST | `/conversations/{id}/messages` | send |
-| DELETE | `/messages/{id}` | soft delete |
-| POST | `/messages/{id}/reactions` | react |
-| DELETE | `/messages/{id}/reactions` | unreact |
-| POST | `/conversations/{id}/read` | mark read |
+| POST / DELETE | `/conversations/{id}/mute` | mute / unmute |
+| POST | `/conversations/{id}/read` | mark read (§5) |
+| GET | `/conversations/{id}/events?after=N` | catch-up (`change_log.md` §6) |
 
-## 8. Rules & edge cases
+## 7. Today's code differs
 
-- A **blocked** user's messages into a conversation they share with the blocker: dropped for the blocker (see relations.md §5).
-- Sending into a **frozen** (blocked) direct conversation: rejected for the blocker, dropped for the blocked.
-- Sending to a conversation you're not a member of: 403.
-- Message send is rate-limited (C-3).
-- Deleting a message also removes its reactions but keeps the row.
+The conversation and membership models are stubs; `last_read_message_id` from the first design
+becomes `last_read_seq`. Not re-checked against the stub code in this round.
 
-## 9. Open questions / decisions
+## 8. Open questions
 
-- D-1 (unfriend DM rule) is the only open behavioral decision affecting this module.
-- Threads (reply trees) are a later feature; replies-as-parent-reference already give us the data.
+| # | Question | Notes |
+|---|---|---|
+| 8.1 | Read receipts in groups | What "seen" shows with up to 100 readers |
+| 8.2 | What a kicked member can still see | History up to the kick? Files? |
+| 8.3 | DM after unfriend (PRD D-1) | Proposed in the PRD: history stays readable; sending disabled until friends again |
+| 8.4 | Group lifecycle | Owner leaves (first proposal: oldest admin, else oldest member, else delete the group); owner deletes the group (first proposal: conversation and its messages soft-marked deleted, members removed; still open: what members, sockets and the change log see) |
+| 8.5 | Mute vs live socket pushes | Decided already: a muted chat still counts in the badge and gets no alerts or mention notifications (`notifications.md` §6) |
+| 8.6 | Proposed rows in §5 | Count on demand, mark-as-read, own messages |
